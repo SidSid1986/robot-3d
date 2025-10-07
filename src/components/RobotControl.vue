@@ -8,7 +8,7 @@
         :min="joint.min"
         :max="joint.max"
         :step="joint.step"
-        @input="updateJoint(joint.name, jointValues[index])"
+        @input="updateJoint(joint.name, jointValues[index], jointValues)"
       />
       <span>{{ Number(jointValues[index]).toFixed(2) }} rad</span>
     </div>
@@ -114,27 +114,35 @@ const coordinatedJointSets = [
   // 您可以根据需要添加更多组合
 ];
 
-// 定义自动演示轨迹，使用协调关节组合来保持夹爪高度不变
+// 每个子数组包含 6 个数字（单位：弧度），依次对应：
+// [shoulder_joint, upperArm_joint, foreArm_joint, wrist1_joint, wrist2_joint, wrist3_joint]
+
 const demoTrajectory = [
-  // 步骤1: 初始位置（可省略，或者作为起点）
-  // 步骤2: 向前（调整到协调组合1，保持夹爪高度）
-  { name: "coordinated", set: { shoulder: 0.5, upperArm: 0.5 }, delay: 1000 },
-  // 步骤3: 向左（调整到协调组合2，保持夹爪高度）
-  { name: "coordinated", set: { shoulder: 1.0, upperArm: 0.0 }, delay: 1000 },
-  // 步骤4: 向下（调整 wrist1_joint）
-  { name: "wrist1_joint", value: -0.5, delay: 1000 },
-  // 步骤5: 夹爪闭合（抓取）
-  { name: "finger_joint", value: 0.8, delay: 1000 },
-  // 步骤6: 抬起（调整 wrist1_joint 回正）
-  { name: "wrist1_joint", value: 0.0, delay: 1000 },
-  // 步骤7: 回到原位（所有关节复位）
-  { name: "shoulder_joint", value: 0.0, delay: 1000 },
-  { name: "upperArm_joint", value: 0.0, delay: 1000 },
-  { name: "foreArm_joint", value: 1.57, delay: 1000 },
-  { name: "wrist1_joint", value: 0.0, delay: 1000 },
-  { name: "wrist2_joint", value: 1.57, delay: 1000 },
-  { name: "wrist3_joint", value: 0.0, delay: 1000 },
-  { name: "finger_joint", value: 0.0, delay: 1000 },
+  // 初始位置（可跳过，或作为起始点）
+  [0.0, 0.0, 1.57, 0.0, 1.57, 0.0],
+
+  // 第1步：上臂和前臂微微调整（模拟机械臂前倾 / 前移）
+  [0.2, -0.3, 1.57, 0.0, 1.57, 0.0],
+
+  // 第2步：继续调整上臂和前臂（模拟向左平移）
+  [0.4, -0.6, 1.57, 0.0, 1.57, 0.0],
+
+  // 第3步：下降（通过 wrist1_joint 向下）
+  [0.4, -0.6, 1.57, -0.5, 1.57, 0.0],
+
+  // 第4步：夹爪闭合（您可以选择是否放在这个数组里，或者单独处理）
+  // 如果夹爪是第6个轴（wrist3_joint），可以设置为 0.8
+  // 或者您之后单独发射 finger_joint 事件
+  [0.4, -0.6, 1.57, -0.5, 1.57, 0.8], // 假设第6轴是夹爪
+
+  // 第5步：抬起（wrist1_joint 回正）
+  [0.4, -0.6, 1.57, 0.0, 1.57, 0.8],
+
+  // 第6步：回到原位（上臂和前臂复位）
+  [0.0, 0.0, 1.57, 0.0, 1.57, 0.8],
+
+  // 第7步：夹爪松开 & 完全复位（可选）
+  [0.0, 0.0, 1.57, 0.0, 1.57, 0.0],
 ];
 
 let isDemoRunning = ref(false); // 防止重复点击
@@ -165,11 +173,24 @@ const robotReset = () => {
 /**
  * 更新某个关节的角度
  */
-const updateJoint = (jointName, value) => {
-  console.log(`更新关节 ${jointName} 的角度为 ${value} rad`);
+// const updateJoint = (jointName, value, jointValues) => {
+//   console.log(`更新关节 ${jointName} 的角度为 ${value} rad`);
+//   console.log("所有轴的数据", jointValues);
+
+//   emit("joint-change", {
+//     jointName,
+//     angle: parseFloat(value), // 确保传递的是数值类型
+//     jointValues,
+//   });
+// };
+const updateJoint = (jointName, value, jointValues) => {
+  // 我们仍然传 jointName 和 value 用于日志等，但真正有用的是 jointValues
+  // console.log(`更新关节 ${jointName} 的角度为 ${value} rad`);
+  console.log("所有轴的数据", jointValues);
+
+  //  将整个 jointValues 数组传给父组件，父组件会一次性更新所有关节
   emit("joint-change", {
-    jointName,
-    angle: parseFloat(value), // 确保传递的是数值类型
+    jointValues: jointValues.map(Number), // 确保是数字类型
   });
 };
 
@@ -204,7 +225,7 @@ const setCoordinatedJoints = (set) => {
  * 执行自动演示轨迹
  */
 const startDemo = () => {
-  if (isDemoRunning.value) return; // 防止重复执行
+  if (isDemoRunning.value) return;
   isDemoRunning.value = true;
 
   let stepIndex = 0;
@@ -212,33 +233,22 @@ const startDemo = () => {
   const executeNextStep = () => {
     if (stepIndex >= demoTrajectory.length) {
       isDemoRunning.value = false;
-      console.log("✅ 码垛操作完成！");
+      console.log(" 码垛操作完成！");
       return;
     }
 
-    const step = demoTrajectory[stepIndex];
-    console.log(
-      `🔁 执行步骤 ${stepIndex + 1}: 关节 ${step.name} → ${
-        step.set ? JSON.stringify(step.set) : step.value
-      }`
-    );
+    // 当前帧就是一个长度为 6 的数组，对应 6 个关节目标值
+    const frame = demoTrajectory[stepIndex];
+    console.log(`🔁 执行步骤 ${stepIndex + 1}:`, frame);
 
-    if (step.name === "coordinated") {
-      // 处理协调关节运动
-      setCoordinatedJoints(step.set);
-    } else if (step.name === "finger_joint") {
-      // 处理夹爪关节
-      emit("gripper-change", step.value);
-    } else {
-      // 处理单个关节
-      emit("joint-change", {
-        jointName: step.name,
-        angle: step.value,
-      });
-    }
+    // 直接把这一帧作为 jointValues 传给父组件，一次性更新所有关节
+    emit("joint-change", {
+      jointValues: [...frame], // 确保是新的数组，数字类型
+    });
 
     stepIndex++;
-    setTimeout(executeNextStep, step.delay || 1000); // 延时执行下一步
+    // 延时 1~2 秒后执行下一步（可调整）
+    setTimeout(executeNextStep, 2000);
   };
 
   executeNextStep();

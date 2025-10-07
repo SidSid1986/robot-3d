@@ -154,10 +154,33 @@ const handleResize = () => {
 /**
  * 监听来自控制面板的关节变化事件，更新对应机器人关节
  */
-const handleJointChange = ({ jointName, angle }) => {
-  if (robot && robot.joints[jointName]) {
-    robot.joints[jointName].setJointValue(angle);
-  }
+// const handleJointChange = ({ jointName, angle, jointValues }) => {
+//   if (robot && robot.joints[jointName]) {
+//     robot.joints[jointName].setJointValue(angle);
+//   }
+// };
+
+const handleJointChange = ({ jointValues }) => {
+  if (!robot) return;
+
+  // 定义机器人关节的顺序，必须与子组件中的 jointValues 顺序完全一致
+  const jointOrder = [
+    "shoulder_joint",
+    "upperArm_joint",
+    "foreArm_joint",
+    "wrist1_joint",
+    "wrist2_joint",
+    "wrist3_joint",
+  ];
+
+  jointValues.forEach((value, index) => {
+    const jointName = jointOrder[index];
+    if (robot.joints[jointName]) {
+      robot.joints[jointName].setJointValue(value);
+    } else {
+      console.warn(`未找到关节: ${jointName}`);
+    }
+  });
 };
 
 /**
