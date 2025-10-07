@@ -103,48 +103,18 @@ const INITIAL_POSITIONS = {
   finger_joint: 0.0, // 夹爪关节
 };
 
-// 定义协调运动的关节角度组合，这些组合保持夹爪高度不变
-// 这些值需要根据您的具体机械臂模型进行调整
-// 以下示例假设：
-// - 当 shoulder_joint = 0.5, upperArm_joint = 0.5 时，夹爪Y轴位置保持不变
-// - 您需要根据实际情况测量或计算这些组合
-const coordinatedJointSets = [
-  { shoulder: 0.5, upperArm: 0.5 }, // 示例组合1，保持高度
-  { shoulder: 1.0, upperArm: 0.0 }, // 示例组合2，保持高度
-  // 您可以根据需要添加更多组合
-];
-
 // 每个子数组包含 6 个数字（单位：弧度），依次对应：
 // [shoulder_joint, upperArm_joint, foreArm_joint, wrist1_joint, wrist2_joint, wrist3_joint]
 
 const demoTrajectory = [
-  // 初始位置（可跳过，或作为起始点）
-  [0.0, 0.0, 1.57, 0.0, 1.57, 0.0],
-
-  // 第1步：上臂和前臂微微调整（模拟机械臂前倾 / 前移）
-  [0.2, -0.3, 1.57, 0.0, 1.57, 0.0],
-
-  // 第2步：继续调整上臂和前臂（模拟向左平移）
-  [0.4, -0.6, 1.57, 0.0, 1.57, 0.0],
-
-  // 第3步：下降（通过 wrist1_joint 向下）
-  [0.4, -0.6, 1.57, -0.5, 1.57, 0.0],
-
-  // 第4步：夹爪闭合（您可以选择是否放在这个数组里，或者单独处理）
-  // 如果夹爪是第6个轴（wrist3_joint），可以设置为 0.8
-  // 或者您之后单独发射 finger_joint 事件
-  [0.4, -0.6, 1.57, -0.5, 1.57, 0.8], // 假设第6轴是夹爪
-
-  // 第5步：抬起（wrist1_joint 回正）
-  [0.4, -0.6, 1.57, 0.0, 1.57, 0.8],
-
-  // 第6步：回到原位（上臂和前臂复位）
-  [0.0, 0.0, 1.57, 0.0, 1.57, 0.8],
-
-  // 第7步：夹爪松开 & 完全复位（可选）
-  [0.0, 0.0, 1.57, 0.0, 1.57, 0.0],
+  [0.0, 0.0, 1.57, 0.0, 1.57, 0.0],     // 初始
+  [0.2, -0.3, 1.57, 0.0, 1.57, 0.0],   // 前倾
+  [0.4, -0.6, 1.57, 0.0, 1.57, 0.0],   // 左移
+  [0.4, -0.6, 1.57, -0.5, 1.57, 0.0],  // 下降
+  [0.4, -0.6, 1.57, 0.0, 1.57, 0.0],   // 抬起准备
+  [0.0, 0.0, 1.57, 0.0, 1.57, 0.0],    // 回位
+  [0.0, 0.0, 1.57, 0.0, 1.57, 0.0],    // 复位
 ];
-
 let isDemoRunning = ref(false); // 防止重复点击
 
 /**
@@ -204,22 +174,6 @@ const updateGripper = (value) => {
   }
 };
 
-/**
- * 根据协调关节组合设置上臂和前臂关节，以保持夹爪高度不变
- * @param {Object} set - 包含 shoulder 和 upperArm 的目标值
- */
-const setCoordinatedJoints = (set) => {
-  if (set && set.shoulder !== undefined && set.upperArm !== undefined) {
-    emit("joint-change", {
-      jointName: "shoulder_joint",
-      angle: set.shoulder,
-    });
-    emit("joint-change", {
-      jointName: "upperArm_joint",
-      angle: set.upperArm,
-    });
-  }
-};
 
 /**
  * 执行自动演示轨迹
