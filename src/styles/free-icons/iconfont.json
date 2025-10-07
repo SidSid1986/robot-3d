@@ -1,0 +1,23 @@
+{
+  "id": "4873026",
+  "name": "free",
+  "font_family": "iconfont",
+  "css_prefix_text": "icon-",
+  "description": "",
+  "glyphs": [
+    {
+      "icon_id": "4694304",
+      "name": "向下占行",
+      "font_class": "xiangxiazhanhang",
+      "unicode": "ec0b",
+      "unicode_decimal": 60427
+    },
+    {
+      "icon_id": "38300852",
+      "name": "电量高",
+      "font_class": "a-Group4366",
+      "unicode": "e635",
+      "unicode_decimal": 58933
+    }
+  ]
+}

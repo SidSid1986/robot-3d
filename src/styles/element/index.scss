@@ -1,0 +1,40 @@
+// styles/element/index.scss
+/* 只需要重写你需要的即可 */
+@forward "element-plus/theme-chalk/src/common/var.scss" with (
+  $colors: (
+    // "primary": (
+    //   "base": #008000,
+    //   "light-1": #1a8f1a,
+    //   "light-2": #339e33,
+    //   "light-3": #4db84d,
+    //   "light-4": #66cc66,
+    //   "light-5": #80d980,
+    //   "light-6": #99e699,
+    //   "light-7": #b3f2b3,
+    //   "light-8": #ccffcc,
+    //   "light-9": #e6ffe6,
+    //   "dark-1": #007300,
+    // ),
+    "primary":
+      (
+        // "base": #044bca,
+        "base": #044bca,
+        "light-1": #1e61d2,
+        "light-2": #3777da,
+        "light-3": #518de3,
+        "light-4": #6aa3eb,
+        "light-5": #84b9f3,
+        "light-6": #9dcffb,
+        "light-7": #b7e5ff,
+        "light-8": #d0fbff,
+        "light-9": #e9ffff,
+        "dark-1": #0341b3
+      ),
+  )
+);
+
+// 如果只是按需导入，则可以忽略以下内容。
+// 如果你想导入所有样式:
+@use "element-plus/theme-chalk/src/index.scss" as *;
+
+$primary-color: #044bca;
