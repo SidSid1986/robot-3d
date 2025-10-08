@@ -53,14 +53,22 @@ const initScene = () => {
   renderer.setPixelRatio(window.devicePixelRatio); // 设置像素比，适配高DPI屏幕
   container.value.appendChild(renderer.domElement); // 将渲染器的画布插入到 DOM 中
 
-  // 添加环境光，模拟全局均匀光照
-  const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
-  scene.add(ambientLight);
-
-  // 添加方向光，模拟太阳光，增强立体感
-  const directionalLight = new THREE.DirectionalLight(0xffffff, 0.6);
-  directionalLight.position.set(5, 5, 5); // 光源位置
+  // 原有第一盏方向光（保留）
+  const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
+  directionalLight.position.set(10, 20, 10);
+  directionalLight.castShadow = true;
+  directionalLight.shadow.mapSize.width = 2048;
+  directionalLight.shadow.mapSize.height = 2048;
   scene.add(directionalLight);
+
+  // 新增第二盏方向光（反向，照亮第一盏光的阴影面）
+  const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.8); // 强度稍低，避免过曝
+  directionalLight2.position.set(-10, 10, -10); // 与第一盏光反向
+  scene.add(directionalLight2);
+
+  // 原有环境光（保留，可适当提高强度）
+  const ambientLight = new THREE.AmbientLight(0x404040, 1.2); // 强度从0.8→1.2，增强阴影填充
+  scene.add(ambientLight);
 
   // 添加网格地面，便于观察机器人相对位置
   const gridSize = 10;

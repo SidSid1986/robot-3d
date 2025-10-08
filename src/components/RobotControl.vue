@@ -42,12 +42,27 @@
 </template>
 
 <script setup>
-import { ref } from "vue";
+import { ref, onMounted } from "vue";
 import { Refresh, VideoPlay } from "@element-plus/icons-vue"; // 引入刷新图标
 import { ElButton } from "element-plus"; // 引入 Element Plus 按钮组件
+import demoTrajectory from "./demo-trajectory.json";
 
 // 定义组件向父级传递的事件
 const emit = defineEmits(["joint-change", "gripper-change", "reset-all"]);
+// 当前正在插值的关节值
+const currentJointValues = ref([0.0, 0.0, 1.57, 0.0, 1.57, 0.0]);
+
+// 目标关节值（当前帧的目标）
+const targetJointValues = ref([0.0, 0.0, 1.57, 0.0, 1.57, 0.0]);
+
+// 当前轨迹帧索引
+const currentFrameIndex = ref(0);
+
+// 插值因子（越小越平滑，比如 0.02 ~ 0.05）
+const lerpFactor = 0.03;
+
+// 动画循环 ID（用于取消）
+let animationFrameId = null;
 
 // 定义所有可控制的关节信息
 const joints = ref([
@@ -106,15 +121,6 @@ const INITIAL_POSITIONS = {
 // 每个子数组包含 6 个数字（单位：弧度），依次对应：
 // [shoulder_joint, upperArm_joint, foreArm_joint, wrist1_joint, wrist2_joint, wrist3_joint]
 
-const demoTrajectory = [
-  [0.0, 0.0, 1.57, 0.0, 1.57, 0.0],     // 初始
-  [0.2, -0.3, 1.57, 0.0, 1.57, 0.0],   // 前倾
-  [0.4, -0.6, 1.57, 0.0, 1.57, 0.0],   // 左移
-  [0.4, -0.6, 1.57, -0.5, 1.57, 0.0],  // 下降
-  [0.4, -0.6, 1.57, 0.0, 1.57, 0.0],   // 抬起准备
-  [0.0, 0.0, 1.57, 0.0, 1.57, 0.0],    // 回位
-  [0.0, 0.0, 1.57, 0.0, 1.57, 0.0],    // 复位
-];
 let isDemoRunning = ref(false); // 防止重复点击
 
 /**
@@ -174,53 +180,75 @@ const updateGripper = (value) => {
   }
 };
 
+/**
+ * 平滑插值执行函数
+ */
+const smoothDemoLoop = () => {
+  if (!isDemoRunning.value) return;
+
+  // 获取当前目标帧
+  if (currentFrameIndex.value < demoTrajectory.length) {
+    targetJointValues.value = demoTrajectory[currentFrameIndex.value];
+  } else {
+    // 所有帧执行完毕
+    console.log("码垛操作完成（所有轨迹帧执行完毕）");
+    isDemoRunning.value = false;
+    if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    return;
+  }
+
+  // 对每个关节进行 lerp 插值
+  const newJointValues = currentJointValues.value.map((current, i) => {
+    const target = targetJointValues.value[i];
+    return current + (target - current) * lerpFactor; // lerp 公式
+  });
+
+  // 更新机械臂关节（通过父组件）
+  emit("joint-change", {
+    jointValues: newJointValues,
+  });
+
+  // 更新当前值
+  currentJointValues.value = newJointValues;
+
+  // 检查是否足够接近目标，可设置一个阈值，比如 0.01
+  const isClose = targetJointValues.value.every(
+    (t, i) => Math.abs(t - newJointValues[i]) < 0.01
+  );
+
+  if (isClose) {
+    // 接近目标，切换到下一帧
+    currentFrameIndex.value++;
+  }
+
+  // 请求下一帧动画
+  animationFrameId = requestAnimationFrame(smoothDemoLoop);
+};
 
 /**
- * 执行自动演示轨迹
+ * 开始演示
  */
 const startDemo = () => {
   if (isDemoRunning.value) return;
   isDemoRunning.value = true;
-
-  let stepIndex = 0;
-
-  const executeNextStep = () => {
-    if (stepIndex >= demoTrajectory.length) {
-      isDemoRunning.value = false;
-      console.log(" 码垛操作完成！");
-      return;
-    }
-
-    // 当前帧就是一个长度为 6 的数组，对应 6 个关节目标值
-    const frame = demoTrajectory[stepIndex];
-    console.log(`🔁 执行步骤 ${stepIndex + 1}:`, frame);
-
-    // 直接把这一帧作为 jointValues 传给父组件，一次性更新所有关节
-    emit("joint-change", {
-      jointValues: [...frame], // 确保是新的数组，数字类型
-    });
-
-    stepIndex++;
-    // 延时 1~2 秒后执行下一步（可调整）
-    setTimeout(executeNextStep, 2000);
-  };
-
-  executeNextStep();
+  currentFrameIndex.value = 0;
+  smoothDemoLoop(); // 开始插值循环
 };
+onMounted(() => {
+  // console.log(demoTrajectory);
+});
 </script>
 
 <style scoped>
-/* 控制面板整体样式 */
 .control-panel {
-  background: rgba(245, 245, 245, 0.95); /* 半透明白色背景 */
-  height: 100%; /* 高度占满父容器 */
-  overflow-y: auto; /* 内容过多时允许滚动 */
+  background: rgba(245, 245, 245, 0.95);
+  height: 100%;
+  overflow-y: auto;
   position: relative;
-  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1); /* 右侧阴影，增加层次感 */
-  backdrop-filter: blur(5px); /* 背景模糊效果，美化 */
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(5px);
 }
 
-/* 每个滑动条容器样式 */
 .slider-container {
   margin-bottom: 15px;
 }
@@ -229,7 +257,7 @@ const startDemo = () => {
 .slider-container label {
   display: block;
   margin-bottom: 5px;
-  font-weight: bold; /* 加粗显示 */
+  font-weight: bold;
 }
 
 /* 滑动条样式 */
@@ -244,12 +272,12 @@ const startDemo = () => {
   color: #555;
 }
 
-/* 按钮区域样式（可进一步优化） */
+/* 按钮区域样式 */
 .button-area {
   margin-top: 20px;
 }
 
-/* 重置按钮悬停效果（可自定义） */
+/* 重置按钮悬停效果  */
 .reset-all-btn:hover {
   background-color: #c0392b;
 }

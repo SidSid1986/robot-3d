@@ -2,19 +2,29 @@
  * @Author: Sid Li
  * @Date: 2025-10-07 11:02:41
  * @LastEditors: Sid Li
- * @LastEditTime: 2025-10-07 11:08:00
- * @FilePath: \robot-3d\src\views\load.vue
+ * @LastEditTime: 2025-10-08 15:21:22
+ * @FilePath: \robot-3d-git\src\views\load.vue
  * @Description: 
 -->
 <template>
-  <div class="container">
+  <!-- <div class="container">
     <div class="left">
+      <BallTwo :trajectory="trajectory" />
+
       <BallOne @getTrajectory="getTrajectory" />
     </div>
     <div class="right">
-      <!-- <BallTwo :trajectory="trajectory" /> -->
+      <BallOne @getTrajectory="getTrajectory" />
+
+      <BallTwo :trajectory="trajectory" />
       <RobotModel />
     </div>
+  </div> -->
+
+  <div class="container">
+    <BallOne @getTrajectory="getTrajectory" />
+    <!-- <BallOne @getTrajectory="getTrajectory" /> -->
+    <!-- <RobotModel /> -->
   </div>
 </template>
 
@@ -39,6 +49,8 @@ onMounted(() => {
 <style scoped lang="scss">
 .container {
   display: flex;
+  width: 100%;
+  height: 100vh;
   flex-direction: row;
   justify-content: space-between;
   align-items: center;
@@ -46,14 +58,14 @@ onMounted(() => {
 
   .left {
     width: 50%;
-    height: 100vh;
-    border: 3px solid pink;
+    height: 100%;
+    // border: 3px solid pink;
     box-sizing: border-box;
   }
   .right {
     width: 50%;
-    height: 100vh;
-    border: 3px solid green;
+    height: 100%;
+    // border: 3px solid green;
 
     box-sizing: border-box;
   }

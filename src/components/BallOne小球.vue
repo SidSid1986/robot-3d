@@ -46,7 +46,6 @@ import {
   CSS2DRenderer,
   CSS2DObject,
 } from "three/addons/renderers/CSS2DRenderer.js";
-import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
 // 定义事件，实时传递轨迹数据
 const emits = defineEmits(["getTrajectory"]);
@@ -87,9 +86,7 @@ const canvasContainer = ref(null);
 // Three.js 核心对象
 let scene, camera, renderer, labelRenderer;
 let orbitControls, transformControls;
-// let sphere, trajectoryLine, tempTrajectoryLine;//小球
-let model, trajectoryLine, tempTrajectoryLine; // 222新增模型变量
-let originSphere; // 新增：原点固定小球变量
+let sphere, trajectoryLine, tempTrajectoryLine;
 let transformHelper = null;
 let playInterval = null;
 let lastEmitTime = 0; // 用于控制数据发送频率
@@ -113,90 +110,8 @@ const threeToTarget = (threeVec3) => {
     z: threeVec3.y, // Z轴:Three.js Y(上）→ 目标Z(上正）
   };
 };
-// 新增：材质处理工具
-const materialManager = {
-  fixMaterials(object) {
-    object.traverse((child) => {
-      if (child.isMesh) {
-        child.material = child.material.clone(); // 克隆材质修复格式
-        child.castShadow = true; // 启用阴影
-        child.receiveShadow = true;
-        child.material.needsUpdate = true; // 强制刷新
-      }
-    });
-  },
-};
-// 初始化场景 小球
-// const initThree = () => {
-//   scene = new THREE.Scene();
-//   scene.background = new THREE.Color(0xb1b1b1);
 
-//   camera = new THREE.PerspectiveCamera(
-//     75,
-//     canvasContainer.value.clientWidth / canvasContainer.value.clientHeight,
-//     0.1,
-//     1000
-//   );
-
-//   // 相机初始位置:右5、上8、后5(从斜上方观察,清晰展示三轴方向)
-//   camera.position.set(3.26, 2.89, 9.75);
-//   camera.lookAt(0, 0, 0);
-
-//   renderer = new THREE.WebGLRenderer({ antialias: true });
-//   renderer.setSize(
-//     canvasContainer.value.clientWidth,
-//     canvasContainer.value.clientHeight
-//   );
-//   canvasContainer.value.appendChild(renderer.domElement);
-
-//   labelRenderer = new CSS2DRenderer();
-//   labelRenderer.setSize(
-//     canvasContainer.value.clientWidth,
-//     canvasContainer.value.clientHeight
-//   );
-//   labelRenderer.domElement.style.position = "absolute";
-//   labelRenderer.domElement.style.top = "0";
-//   labelRenderer.domElement.style.pointerEvents = "none";
-//   canvasContainer.value.appendChild(labelRenderer.domElement);
-
-//   // 添加网格辅助线
-//   const grid = new THREE.GridHelper(10, 10, 0x9b9b9b, 0x8b8b8b);
-//   scene.add(grid);
-
-//   // 添加带标签的坐标轴
-//   addAxesWithLabels();
-
-//   // 创建小球（末端模拟）
-//   const sphereGeo = new THREE.SphereGeometry(0.25);
-//   const sphereMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-//   sphere = new THREE.Mesh(sphereGeo, sphereMat);
-//   // 初始位置：目标坐标(0,0,0) → 转换为Three.js坐标
-//   const initialThreePos = targetToThree(2, 2, 0);
-//   sphere.position.copy(initialThreePos);
-//   // 同步初始坐标到状态
-//   const initialTargetPos = threeToTarget(sphere.position);
-//   state.x = initialTargetPos.x;
-//   state.y = initialTargetPos.y;
-//   state.z = initialTargetPos.z;
-//   scene.add(sphere);
-
-//   // 轨道控制器（旋转/缩放视角）
-//   orbitControls = new OrbitControls(camera, renderer.domElement);
-//   orbitControls.enableDamping = true;
-//   orbitControls.mouseButtons = {
-//     LEFT: THREE.MOUSE.NONE, // 左键禁用(留给TransformControls）
-//     RIGHT: THREE.MOUSE.ROTATE, // 右键旋转
-//     MIDDLE: THREE.MOUSE.DOLLY, // 中键缩放
-//   };
-
-//   // 初始化变换控制器（拖拽小球）
-//   initTransformControls();
-
-//   // 启动渲染循环
-//   animate();
-// };
-
-//222新增模型初始化
+// 初始化场景
 const initThree = () => {
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0xb1b1b1);
@@ -212,14 +127,7 @@ const initThree = () => {
   camera.position.set(3.26, 2.89, 9.75);
   camera.lookAt(0, 0, 0);
 
-  renderer = new THREE.WebGLRenderer({
-    antialias: true,
-    powerPreference: "high-performance",
-  });
-  // 新增：匹配GLB颜色空间
-  renderer.outputColorSpace = THREE.SRGBColorSpace;
-  // 新增：启用阴影
-  renderer.shadowMap.enabled = true;
+  renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(
     canvasContainer.value.clientWidth,
     canvasContainer.value.clientHeight
@@ -243,83 +151,19 @@ const initThree = () => {
   // 添加带标签的坐标轴
   addAxesWithLabels();
 
-  // 1. 保留原主方向光（照亮模型正面）
-  const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
-  directionalLight.position.set(10, 20, 10); // 斜上方光源（原方向不变）
-  directionalLight.castShadow = true;
-  directionalLight.shadow.mapSize.set(2048, 2048);
-  scene.add(directionalLight);
-
-  // 2. 新增反向方向光（消除主光源的阴影死角）
-  const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.9); // 强度稍低，避免过曝
-  directionalLight2.position.set(-8, 15, -8); // 与主光源反向（覆盖模型背面/侧面）
-  scene.add(directionalLight2);
-
-  // 3. 提高环境光强度（增强阴影区域填充，避免死黑）
-  const ambientLight = new THREE.AmbientLight(0x606060, 1.3); // 颜色从0x404040→0x606060，强度从0.8→1.3
-  scene.add(ambientLight);
-
-  // ---------------------- 新增：创建原点固定小球 ----------------------
-  // 1. 小球几何形状（半径0.3，细分32，确保圆润）
-  const originSphereGeo = new THREE.SphereGeometry(0.2, 32, 32);
-  // 2. 小球材质（红色不透明，带金属质感，方便区分模型）
-  const originSphereMat = new THREE.MeshStandardMaterial({
-    color: 0xff4444, // 红色
-    metalness: 0.5, // 金属质感
-    roughness: 0.3, // 低粗糙度（稍亮）
-  });
-  // 3. 实例化小球
-  originSphere = new THREE.Mesh(originSphereGeo, originSphereMat);
-  // 4. 设置小球位置为原点（目标坐标系 (0,0,0) → 转换为Three.js坐标）
-  const originThreePos = targetToThree(0, 0, 0); // 核心：用现有工具函数转原点坐标
-  originSphere.position.copy(originThreePos);
-  // 5. 启用阴影（让小球能接收/投射阴影，更真实）
-  originSphere.castShadow = true;
-  originSphere.receiveShadow = true;
-  // 6. 添加到场景
-  scene.add(originSphere);
-  // -------------------------------------------------------------------
-
-  const loader = new GLTFLoader();
-
-  // 2. 加载模型
-  loader.load(
-    "/public/model/9.glb", // 模型文件路径（必填）
-    (gltf) => {
-      // 加载成功：获取模型主体
-      model = gltf.scene;
-
-      // 新增：修复材质
-      materialManager.fixMaterials(model);
-
-      // 3. 调整模型大小（根据模型实际尺寸缩放，示例为0.5倍）
-      model.scale.set(0.3, 0.3, 0.3);
-
-      // 4. 设置初始位置（与原小球初始位置一致：targetToThree(2,2,0)）
-      const initialThreePos = targetToThree(2, 2, 0);
-      model.position.copy(initialThreePos);
-
-      // 5. 将模型添加到场景
-      scene.add(model);
-
-      // 6. 同步初始坐标到状态（与原小球逻辑一致）
-      const initialTargetPos = threeToTarget(model.position);
-      state.x = initialTargetPos.x;
-      state.y = initialTargetPos.y;
-      state.z = initialTargetPos.z;
-
-      // 7. 将模型绑定到变换控制器（关键：让模型可拖拽）
-      transformControls.attach(model);
-    },
-    (xhr) => {
-      // 加载进度（可选）
-      console.log(`模型加载中：${Math.round((xhr.loaded / xhr.total) * 100)}%`);
-    },
-    (error) => {
-      // 加载失败提示（可选）
-      console.error("模型加载失败：", error);
-    }
-  );
+  // 创建小球（末端模拟）
+  const sphereGeo = new THREE.SphereGeometry(0.25);
+  const sphereMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  sphere = new THREE.Mesh(sphereGeo, sphereMat);
+  // 初始位置：目标坐标(0,0,0) → 转换为Three.js坐标
+  const initialThreePos = targetToThree(2, 2, 0);
+  sphere.position.copy(initialThreePos);
+  // 同步初始坐标到状态
+  const initialTargetPos = threeToTarget(sphere.position);
+  state.x = initialTargetPos.x;
+  state.y = initialTargetPos.y;
+  state.z = initialTargetPos.z;
+  scene.add(sphere);
 
   // 轨道控制器（旋转/缩放视角）
   orbitControls = new OrbitControls(camera, renderer.domElement);
@@ -375,7 +219,7 @@ const addAxesWithLabels = () => {
   );
 
   // 创建坐标轴标签
-  const createAxisLabel = (text, color, position) => {
+  function createAxisLabel(text, color, position) {
     const div = document.createElement("div");
     div.textContent = text;
     div.style.color = color;
@@ -389,7 +233,7 @@ const addAxesWithLabels = () => {
     const label = new CSS2DObject(div);
     label.position.copy(position);
     scene.add(label);
-  };
+  }
 
   // 标签位置与轴的正方向对齐
   createAxisLabel("X", "#ff0000", new THREE.Vector3(axisLength + 0.3, 0, 0));
@@ -398,60 +242,6 @@ const addAxesWithLabels = () => {
 };
 
 // 初始化变换控制器（拖拽小球逻辑）
-// const initTransformControls = () => {
-//   transformControls = new TransformControls(camera, renderer.domElement);
-//   transformControls.mode = "translate"; // 仅允许平移
-
-//   transformHelper = transformControls.getHelper();
-//   if (transformHelper) scene.add(transformHelper);
-
-//   transformControls.attach(sphere); // 将控制器绑定到小球
-
-//   // 监听小球位置变化（实时更新坐标和轨迹）
-//   transformControls.addEventListener("change", () => {
-//     // 转换原始坐标为目标坐标（更新显示）
-//     const targetPos = threeToTarget(sphere.position);
-//     state.x = targetPos.x;
-//     state.y = targetPos.y;
-//     state.z = targetPos.z;
-
-//     // 记录状态时添加轨迹点
-//     if (state.isRecording) {
-//       const currentPoint = { ...targetPos };
-
-//       // 去重处理（避免微小移动重复记录）
-//       const isSameAsLast =
-//         state.lastRecordedPoint &&
-//         Math.abs(currentPoint.x - state.lastRecordedPoint.x) < 0.01 &&
-//         Math.abs(currentPoint.y - state.lastRecordedPoint.y) < 0.01 &&
-//         Math.abs(currentPoint.z - state.lastRecordedPoint.z) < 0.01;
-
-//       if (!isSameAsLast) {
-//         state.tempTrajectory.push(currentPoint);
-//         state.lastRecordedPoint = currentPoint;
-//         updateTempTrajectoryLine();
-
-//         // 控制发送频率（每50ms最多一次）
-//         const now = Date.now();
-//         if (now - lastEmitTime > 50) {
-//           emits("getTrajectory", [...state.tempTrajectory]);
-//           lastEmitTime = now;
-//         }
-//       }
-//     }
-//   });
-
-//   // 拖拽开始/结束时禁用/启用轨道控制器
-//   transformControls.addEventListener("start", () => {
-//     orbitControls.enabled = false;
-//   });
-//   transformControls.addEventListener("end", () => {
-//     orbitControls.enabled = true;
-//   });
-// };
-
-//222 初始变换控制器模型
-// 初始化变换控制器（拖拽模型逻辑）
 const initTransformControls = () => {
   transformControls = new TransformControls(camera, renderer.domElement);
   transformControls.mode = "translate"; // 仅允许平移
@@ -459,22 +249,21 @@ const initTransformControls = () => {
   transformHelper = transformControls.getHelper();
   if (transformHelper) scene.add(transformHelper);
 
-  // 注意：这里暂时不绑定对象，等模型加载成功后再绑定（在loader的回调中）
-  // 原代码：transformControls.attach(sphere);
+  transformControls.attach(sphere); // 将控制器绑定到小球
 
-  // 监听模型位置变化（实时更新坐标和轨迹）
+  // 监听小球位置变化（实时更新坐标和轨迹）
   transformControls.addEventListener("change", () => {
     // 转换原始坐标为目标坐标（更新显示）
-    const targetPos = threeToTarget(model.position); // 替换sphere为model
+    const targetPos = threeToTarget(sphere.position);
     state.x = targetPos.x;
     state.y = targetPos.y;
     state.z = targetPos.z;
 
-    // 记录状态时添加轨迹点（逻辑不变，仅操作对象从sphere变为model）
+    // 记录状态时添加轨迹点
     if (state.isRecording) {
       const currentPoint = { ...targetPos };
 
-      // 去重处理（不变）
+      // 去重处理（避免微小移动重复记录）
       const isSameAsLast =
         state.lastRecordedPoint &&
         Math.abs(currentPoint.x - state.lastRecordedPoint.x) < 0.01 &&
@@ -486,7 +275,7 @@ const initTransformControls = () => {
         state.lastRecordedPoint = currentPoint;
         updateTempTrajectoryLine();
 
-        // 控制发送频率（不变）
+        // 控制发送频率（每50ms最多一次）
         const now = Date.now();
         if (now - lastEmitTime > 50) {
           emits("getTrajectory", [...state.tempTrajectory]);
@@ -496,7 +285,7 @@ const initTransformControls = () => {
     }
   });
 
-  // 拖拽开始/结束时禁用/启用轨道控制器（不变）
+  // 拖拽开始/结束时禁用/启用轨道控制器
   transformControls.addEventListener("start", () => {
     orbitControls.enabled = false;
   });
@@ -504,6 +293,7 @@ const initTransformControls = () => {
     orbitControls.enabled = true;
   });
 };
+
 // 更新实时轨迹线（黄色）
 const updateTempTrajectoryLine = () => {
   if (tempTrajectoryLine) {
@@ -574,9 +364,7 @@ const toggleRecord = () => {
     state.tempTrajectory = [];
     state.lastRecordedPoint = null;
     // 添加初始点（当前目标坐标）
-    // const initialPoint = threeToTarget(sphere.position);//小球
-    const initialPoint = threeToTarget(model.position); //222 model
-
+    const initialPoint = threeToTarget(sphere.position);
     state.tempTrajectory.push(initialPoint);
     state.lastRecordedPoint = initialPoint;
     state.isRecording = true;
@@ -607,8 +395,7 @@ const playRecord = () => {
     // 目标坐标转换为Three.js坐标，设置小球位置
     const point = state.trajectory[index];
     const threePos = targetToThree(point.x, point.y, point.z);
-    // sphere.position.copy(threePos);//小球
-    model.position.copy(threePos); //模型
+    sphere.position.copy(threePos);
 
     // 更新显示坐标
     state.x = point.x;

@@ -89,7 +89,6 @@ let scene, camera, renderer, labelRenderer;
 let orbitControls, transformControls;
 // let sphere, trajectoryLine, tempTrajectoryLine;//小球
 let model, trajectoryLine, tempTrajectoryLine; // 222新增模型变量
-let originSphere; // 新增：原点固定小球变量
 let transformHelper = null;
 let playInterval = null;
 let lastEmitTime = 0; // 用于控制数据发送频率
@@ -113,19 +112,7 @@ const threeToTarget = (threeVec3) => {
     z: threeVec3.y, // Z轴:Three.js Y(上）→ 目标Z(上正）
   };
 };
-// 新增：材质处理工具
-const materialManager = {
-  fixMaterials(object) {
-    object.traverse((child) => {
-      if (child.isMesh) {
-        child.material = child.material.clone(); // 克隆材质修复格式
-        child.castShadow = true; // 启用阴影
-        child.receiveShadow = true;
-        child.material.needsUpdate = true; // 强制刷新
-      }
-    });
-  },
-};
+
 // 初始化场景 小球
 // const initThree = () => {
 //   scene = new THREE.Scene();
@@ -212,14 +199,7 @@ const initThree = () => {
   camera.position.set(3.26, 2.89, 9.75);
   camera.lookAt(0, 0, 0);
 
-  renderer = new THREE.WebGLRenderer({
-    antialias: true,
-    powerPreference: "high-performance",
-  });
-  // 新增：匹配GLB颜色空间
-  renderer.outputColorSpace = THREE.SRGBColorSpace;
-  // 新增：启用阴影
-  renderer.shadowMap.enabled = true;
+  renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(
     canvasContainer.value.clientWidth,
     canvasContainer.value.clientHeight
@@ -243,57 +223,17 @@ const initThree = () => {
   // 添加带标签的坐标轴
   addAxesWithLabels();
 
-  // 1. 保留原主方向光（照亮模型正面）
-  const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
-  directionalLight.position.set(10, 20, 10); // 斜上方光源（原方向不变）
-  directionalLight.castShadow = true;
-  directionalLight.shadow.mapSize.set(2048, 2048);
-  scene.add(directionalLight);
-
-  // 2. 新增反向方向光（消除主光源的阴影死角）
-  const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.9); // 强度稍低，避免过曝
-  directionalLight2.position.set(-8, 15, -8); // 与主光源反向（覆盖模型背面/侧面）
-  scene.add(directionalLight2);
-
-  // 3. 提高环境光强度（增强阴影区域填充，避免死黑）
-  const ambientLight = new THREE.AmbientLight(0x606060, 1.3); // 颜色从0x404040→0x606060，强度从0.8→1.3
-  scene.add(ambientLight);
-
-  // ---------------------- 新增：创建原点固定小球 ----------------------
-  // 1. 小球几何形状（半径0.3，细分32，确保圆润）
-  const originSphereGeo = new THREE.SphereGeometry(0.2, 32, 32);
-  // 2. 小球材质（红色不透明，带金属质感，方便区分模型）
-  const originSphereMat = new THREE.MeshStandardMaterial({
-    color: 0xff4444, // 红色
-    metalness: 0.5, // 金属质感
-    roughness: 0.3, // 低粗糙度（稍亮）
-  });
-  // 3. 实例化小球
-  originSphere = new THREE.Mesh(originSphereGeo, originSphereMat);
-  // 4. 设置小球位置为原点（目标坐标系 (0,0,0) → 转换为Three.js坐标）
-  const originThreePos = targetToThree(0, 0, 0); // 核心：用现有工具函数转原点坐标
-  originSphere.position.copy(originThreePos);
-  // 5. 启用阴影（让小球能接收/投射阴影，更真实）
-  originSphere.castShadow = true;
-  originSphere.receiveShadow = true;
-  // 6. 添加到场景
-  scene.add(originSphere);
-  // -------------------------------------------------------------------
-
   const loader = new GLTFLoader();
 
-  // 2. 加载模型
+  // 2. 加载模型（替换为你的模型路径，如"./models/robot.glb"）
   loader.load(
-    "/public/model/9.glb", // 模型文件路径（必填）
+    "/public/model/4.glb", // 模型文件路径（必填）
     (gltf) => {
       // 加载成功：获取模型主体
       model = gltf.scene;
 
-      // 新增：修复材质
-      materialManager.fixMaterials(model);
-
       // 3. 调整模型大小（根据模型实际尺寸缩放，示例为0.5倍）
-      model.scale.set(0.3, 0.3, 0.3);
+      model.scale.set(5, 5, 5);
 
       // 4. 设置初始位置（与原小球初始位置一致：targetToThree(2,2,0)）
       const initialThreePos = targetToThree(2, 2, 0);

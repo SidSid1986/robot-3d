@@ -21,7 +21,7 @@ import {
   CSS2DObject,
 } from "three/addons/renderers/CSS2DRenderer.js";
 
-// 接收外部轨迹数据（基于X右、Y前、Z上坐标系）
+// 接收外部轨迹数据
 const props = defineProps({
   trajectory: {
     type: Array,
@@ -41,35 +41,20 @@ let scene, camera, renderer, labelRenderer;
 let orbitControls, sphere, trajectoryLine;
 let playInterval = null;
 
-// 坐标转换工具函数（核心：目标坐标系 ↔ Three.js原始坐标系）
-// 目标坐标系定义：X右正、Y前正（屏幕内）、Z上正
-function targetToThree(targetX, targetY, targetZ) {
-  return new THREE.Vector3(
-    targetX, // X轴：直接映射（右正）
-    targetZ, // Z轴：目标Z（上）→ Three.js Y（上）
-    -targetY // Y轴：目标Y（前）→ Three.js Z（向内=前正，取负）
-  );
-}
-
 // 初始化场景
 function initThree() {
   // 创建场景
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x1a1a1a);
 
-  // 创建相机（调整位置更贴合新坐标系视角）
+  // 创建相机
   camera = new THREE.PerspectiveCamera(
     75,
     canvasContainer.value.clientWidth / canvasContainer.value.clientHeight,
     0.1,
     1000
   );
-
-  console.log('two');
-  console.log(canvasContainer.value.clientWidth);
-  console.log(canvasContainer.value.clientHeight);
-
-  camera.position.set(3.26, 2.89, 9.75);
+  camera.position.set(8, 8, 8);
   camera.lookAt(0, 0, 0);
 
   // 创建渲染器
@@ -95,7 +80,7 @@ function initThree() {
   const grid = new THREE.GridHelper(10, 10, 0x333333, 0x222222);
   scene.add(grid);
 
-  // 添加带标签的坐标轴（符合目标坐标系）
+  // 添加带标签的坐标轴
   addAxesWithLabels();
 
   // 创建小球
@@ -120,44 +105,44 @@ function initThree() {
   animate();
 }
 
-// 添加带文字标签的坐标轴（视觉对齐目标坐标系）
+// 添加带文字标签的坐标轴
 function addAxesWithLabels() {
   const axisLength = 5;
 
-  // X轴：右正（红色）
+  // X轴（红色）
   scene.add(
     new THREE.Line(
       new THREE.BufferGeometry().setFromPoints([
         new THREE.Vector3(0, 0, 0),
-        new THREE.Vector3(axisLength, 0, 0), // 原始X轴正方向（右）
+        new THREE.Vector3(axisLength, 0, 0),
       ]),
       new THREE.LineBasicMaterial({ color: 0xff0000, linewidth: 2 })
     )
   );
 
-  // Y轴：前正（绿色，指向屏幕内）
+  // Y轴（绿色）
   scene.add(
     new THREE.Line(
       new THREE.BufferGeometry().setFromPoints([
         new THREE.Vector3(0, 0, 0),
-        new THREE.Vector3(0, 0, -axisLength), // 原始Z轴负方向（向内=前）
+        new THREE.Vector3(0, axisLength, 0),
       ]),
       new THREE.LineBasicMaterial({ color: 0x00ff00, linewidth: 2 })
     )
   );
 
-  // Z轴：上正（蓝色）
+  // Z轴（蓝色）
   scene.add(
     new THREE.Line(
       new THREE.BufferGeometry().setFromPoints([
         new THREE.Vector3(0, 0, 0),
-        new THREE.Vector3(0, axisLength, 0), // 原始Y轴正方向（上）
+        new THREE.Vector3(0, 0, axisLength),
       ]),
       new THREE.LineBasicMaterial({ color: 0x0000ff, linewidth: 2 })
     )
   );
 
-  // 创建标签（与轴的正方向对齐）
+  // 创建标签
   function createLabel(text, color, position) {
     const div = document.createElement("div");
     div.textContent = text;
@@ -174,11 +159,11 @@ function addAxesWithLabels() {
   }
 
   createLabel("X", "#ff0000", new THREE.Vector3(axisLength + 0.3, 0, 0));
-  createLabel("Y", "#00ff00", new THREE.Vector3(0, 0, -axisLength - 0.3)); // Y轴前向标签
-  createLabel("Z", "#0000ff", new THREE.Vector3(0, axisLength + 0.3, 0)); // Z轴上向标签
+  createLabel("Y", "#00ff00", new THREE.Vector3(0, axisLength + 0.3, 0));
+  createLabel("Z", "#0000ff", new THREE.Vector3(0, 0, axisLength + 0.3));
 }
 
-// 更新轨迹线（转换目标坐标为Three.js坐标）
+// 更新轨迹线（修复state未定义错误）
 function updateTrajectoryLine(points) {
   // 移除旧轨迹线
   if (trajectoryLine) {
@@ -188,21 +173,20 @@ function updateTrajectoryLine(points) {
 
   // 实时更新轨迹线
   if (points.length >= 1) {
-    // 转换目标坐标系的点为Three.js渲染坐标
-    const vertices = points.map((p) => targetToThree(p.x, p.y, p.z));
+    const vertices = points.map((p) => new THREE.Vector3(p.x, p.y, p.z));
     const geo = new THREE.BufferGeometry().setFromPoints(vertices);
+    // 固定轨迹线颜色（或根据需求调整）
     const mat = new THREE.LineBasicMaterial({
-      color: 0x00ffff,
+      color: 0x00ffff, // 统一使用青色轨迹线
       linewidth: 2,
     });
     trajectoryLine = new THREE.Line(geo, mat);
     scene.add(trajectoryLine);
 
-    // 非播放状态下同步小球到最后一点
+    // 实时同步小球位置（非播放状态下）
     if (points.length > 0 && !isPlaying.value) {
       const lastPoint = points[points.length - 1];
-      const threePos = targetToThree(lastPoint.x, lastPoint.y, lastPoint.z);
-      sphere.position.copy(threePos);
+      sphere.position.set(lastPoint.x, lastPoint.y, lastPoint.z);
       currentIndex.value = points.length - 1;
     }
   }
@@ -229,7 +213,7 @@ function onWindowResize() {
   labelRenderer.setSize(width, height);
 }
 
-// 播放/停止轨迹（使用坐标转换确保运动正确）
+// 播放/停止轨迹
 const togglePlay = () => {
   if (isPlaying.value) {
     clearInterval(playInterval);
@@ -247,17 +231,16 @@ const togglePlay = () => {
       clearInterval(playInterval);
       isPlaying.value = false;
       currentIndex.value = 0;
-      // 回到起点（转换坐标）
-      const firstPoint = props.trajectory[0];
-      const threePos = targetToThree(firstPoint.x, firstPoint.y, firstPoint.z);
-      sphere.position.copy(threePos);
+      sphere.position.set(
+        props.trajectory[0].x,
+        props.trajectory[0].y,
+        props.trajectory[0].z
+      );
       return;
     }
 
-    // 转换目标坐标为Three.js坐标并设置小球位置
     const point = props.trajectory[currentIndex.value];
-    const threePos = targetToThree(point.x, point.y, point.z);
-    sphere.position.copy(threePos);
+    sphere.position.set(point.x, point.y, point.z);
     currentIndex.value++;
   }, 50);
 };
@@ -273,6 +256,7 @@ watch(
 
 // 生命周期
 onMounted(() => {
+  console.log(crypto.randomUUID());
   window.addEventListener("resize", onWindowResize);
   if (canvasContainer.value) initThree();
 });
