@@ -2,7 +2,7 @@
  * @Author: Sid Li
  * @Date: 2025-10-07 11:02:41
  * @LastEditors: Sid Li
- * @LastEditTime: 2025-10-08 15:21:22
+ * @LastEditTime: 2025-10-08 16:10:06
  * @FilePath: \robot-3d-git\src\views\load.vue
  * @Description: 
 -->
@@ -22,9 +22,9 @@
   </div> -->
 
   <div class="container">
-    <BallOne @getTrajectory="getTrajectory" />
     <!-- <BallOne @getTrajectory="getTrajectory" /> -->
-    <!-- <RobotModel /> -->
+
+    <RobotModel />
   </div>
 </template>
 

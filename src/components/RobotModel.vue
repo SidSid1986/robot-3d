@@ -3,39 +3,134 @@
     <!-- 用于承载 Three.js 渲染画布的容器 -->
     <div ref="container" class="canvas-container"></div>
 
-    <!-- 机械臂控制面板组件，用于调节关节角度和夹爪 -->
-    <!-- // 监听关节变化事件 // 监听夹爪变化事件 // 监听机械臂复位事件 -->
-    <RobotControl
-      @joint-change="handleJointChange"
-      @gripper-change="handleGripperChange"
-      @reset-all="resetAllJoints"
-    />
+    <!-- 控制面板组合：机械臂控制 + 轨迹记录控制 -->
+    <div class="control-panels">
+      <!-- 机械臂控制面板 -->
+      <RobotControl
+        @joint-change="handleJointChange"
+        @gripper-change="handleGripperChange"
+        @reset-all="resetAllJoints"
+      />
+
+      <!-- 轨迹记录控制面板 -->
+      <div class="trajectory-controls">
+        <div class="controls-title">轨迹控制</div>
+        <button
+          @click="toggleRecord"
+          :disabled="isPlaying"
+          :class="{ active: isRecording }"
+        >
+          {{ isRecording ? "停止记录" : "开始记录" }}
+        </button>
+        <button
+          @click="playRecord"
+          :disabled="!hasRecord || isRecording || isPlaying"
+        >
+          回放轨迹
+        </button>
+        <button
+          @click="clearRecord"
+          :disabled="!hasRecord || isRecording || isPlaying"
+        >
+          清除记录
+        </button>
+        <div class="info">
+          末端坐标: X: {{ endX.toFixed(2) }}, Y: {{ endY.toFixed(2) }}, Z:
+          {{ endZ.toFixed(2) }}<br />
+          状态: {{ statusText }}
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, watch } from "vue";
-import * as THREE from "three"; // 引入 Three.js 核心库
-import { OrbitControls } from "three/examples/jsm/controls/OrbitControls"; // 轨道控制器，支持鼠标交互
-import URDFLoader from "urdf-loader"; // 用于加载 URDF 机器人模型
-import RobotControl from "./RobotControl.vue"; // 引入机械臂控制面板子组件
+import {
+  ref,
+  onMounted,
+  onBeforeUnmount,
+  reactive,
+  computed,
+  watch,
+} from "vue";
+import * as THREE from "three";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
+import { TransformControls } from "three/examples/jsm/controls/TransformControls";
+import {
+  CSS2DRenderer,
+  CSS2DObject,
+} from "three/examples/jsm/renderers/CSS2DRenderer";
+import URDFLoader from "urdf-loader";
+import RobotControl from "./RobotControl.vue"; // 确保该组件路径正确
 
-// 响应式引用，指向模板中的 div 容器
+// 容器引用
 const container = ref(null);
 
-// Three.js 相关对象
-let scene, camera, renderer, controls, robot; // 场景、相机、渲染器、控制器、机器人模型
+// 轨迹记录相关状态
+const state = reactive({
+  isRecording: false,
+  isPlaying: false,
+  trajectory: [],
+  tempTrajectory: [],
+  endX: 0,
+  endY: 0,
+  endZ: 0,
+  lastRecordedPoint: null,
+});
+
+// 计算属性
+const isRecording = computed(() => state.isRecording);
+const isPlaying = computed(() => state.isPlaying);
+const hasRecord = computed(() => state.trajectory.length > 0);
+const endX = computed(() => state.endX);
+const endY = computed(() => state.endY);
+const endZ = computed(() => state.endZ);
+
+const statusText = computed(() => {
+  if (state.isRecording)
+    return `正在记录（${state.tempTrajectory.length}个点）`;
+  if (state.isPlaying)
+    return `正在回放（${Math.round(playProgress.value * 100)}%）`;
+  if (hasRecord.value) return `已记录轨迹（${state.trajectory.length}个点）`;
+  return "就绪（可开始记录轨迹）";
+});
+
+// 回放进度
+const playProgress = ref(0);
+
+// Three.js 核心对象
+let scene, camera, renderer, labelRenderer, controls;
+let robot, endEffector, transformControls;
+let trajectoryLine, tempTrajectoryLine, originSphere;
+let playInterval = null;
+let lastEmitTime = 0;
+
+// 坐标转换工具函数（统一坐标系：X右、Y前、Z上）
+const targetToThree = (targetX, targetY, targetZ) => {
+  return new THREE.Vector3(
+    targetX, // X轴: 直接映射（右正）
+    targetZ, // Z轴: 目标Z(上) → Three.js Y(上)
+    -targetY // Y轴: 目标Y(前) → Three.js Z(向内，取负)
+  );
+};
+
+const threeToTarget = (threeVec3) => {
+  return {
+    x: threeVec3.x,
+    y: -threeVec3.z,
+    z: threeVec3.y,
+  };
+};
 
 /**
- * 初始化 3D 场景
+ * 初始化3D场景
  */
 const initScene = () => {
-  // 创建 Three.js 场景，并设置背景色
+  // 创建场景
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0xeeeeee); // 浅灰色背景
+  scene.background = new THREE.Color(0xeeeeee);
 
-  // 创建透视相机
-  // 视野角度 85°，宽高比根据容器自适应，近裁剪面 0.1，远裁剪面 1000
+  // 创建相机
   camera = new THREE.PerspectiveCamera(
     85,
     container.value.clientWidth / container.value.clientHeight,
@@ -43,135 +138,291 @@ const initScene = () => {
     1000
   );
 
-  // 创建 WebGL 渲染器，开启抗锯齿和高性能模式，解决深度冲突（z-fighting）
+  // 创建渲染器
   renderer = new THREE.WebGLRenderer({
-    antialias: true, // 开启抗锯齿
-    powerPreference: "high-performance", // 强制使用高性能 GPU
-    logarithmicDepthBuffer: true, // 解决远距离物体渲染异常
+    antialias: true,
+    powerPreference: "high-performance",
+    logarithmicDepthBuffer: true,
   });
-  renderer.setSize(container.value.clientWidth, container.value.clientHeight); // 设置渲染器尺寸
-  renderer.setPixelRatio(window.devicePixelRatio); // 设置像素比，适配高DPI屏幕
-  container.value.appendChild(renderer.domElement); // 将渲染器的画布插入到 DOM 中
+  renderer.setSize(container.value.clientWidth, container.value.clientHeight);
+  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.shadowMap.enabled = true;
+  container.value.appendChild(renderer.domElement);
 
-  // 原有第一盏方向光（保留）
+  // 创建标签渲染器（用于坐标轴标签）
+  labelRenderer = new CSS2DRenderer();
+  labelRenderer.setSize(
+    container.value.clientWidth,
+    container.value.clientHeight
+  );
+  labelRenderer.domElement.style.position = "absolute";
+  labelRenderer.domElement.style.top = "0";
+  labelRenderer.domElement.style.pointerEvents = "none";
+  container.value.appendChild(labelRenderer.domElement);
+
+  // 光源配置
   const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
   directionalLight.position.set(10, 20, 10);
   directionalLight.castShadow = true;
-  directionalLight.shadow.mapSize.width = 2048;
-  directionalLight.shadow.mapSize.height = 2048;
+  directionalLight.shadow.mapSize.set(2048, 2048);
   scene.add(directionalLight);
 
-  // 新增第二盏方向光（反向，照亮第一盏光的阴影面）
-  const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.8); // 强度稍低，避免过曝
-  directionalLight2.position.set(-10, 10, -10); // 与第一盏光反向
+  const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.9);
+  directionalLight2.position.set(-8, 15, -8);
   scene.add(directionalLight2);
 
-  // 原有环境光（保留，可适当提高强度）
-  const ambientLight = new THREE.AmbientLight(0x404040, 1.2); // 强度从0.8→1.2，增强阴影填充
+  const ambientLight = new THREE.AmbientLight(0x606060, 1.3);
   scene.add(ambientLight);
 
-  // 添加网格地面，便于观察机器人相对位置
-  const gridSize = 10;
-  const gridDivisions = 10;
-  const gridHelper = new THREE.GridHelper(
-    gridSize,
-    gridDivisions,
-    0x444444, // 网格线颜色
-    0x888888 // 网格背景色
-  );
-  gridHelper.position.y = -0.01; // 稍微下沉避免与地面 z-fighting
+  // 网格地面
+  const gridHelper = new THREE.GridHelper(10, 10, 0x444444, 0x888888);
+  gridHelper.position.y = -0.01;
   scene.add(gridHelper);
 
-  // 添加坐标系辅助线，便于观察方向
-  const axesSize = 2;
-  const axesHelper = new THREE.AxesHelper(axesSize);
-  axesHelper.material.depthTest = false; // 始终显示在最前面
-  scene.add(axesHelper);
+  // 添加带标签的坐标轴
+  addAxesWithLabels();
 
-  // 添加轨道控制器，支持鼠标拖拽旋转、缩放和平移视角
+  // 轨道控制器
   controls = new OrbitControls(camera, renderer.domElement);
-  controls.enableDamping = true; // 开启阻尼效果，让操作更平滑
+  controls.enableDamping = true;
   controls.dampingFactor = 0.05;
 
-  // 使用 URDFLoader 加载机器人模型
-  const loader = new URDFLoader();
-  // 指定机器人模型包路径，对应 /public/aubo_description/
-  loader.packages = {
-    aubo_description: "/aubo_description",
+  // 变换控制器（用于拖拽末端执行器）
+  initTransformControls();
+
+  // 加载机器人模型
+  loadRobotModel();
+};
+
+/**
+ * 添加带标签的坐标轴
+ */
+const addAxesWithLabels = () => {
+  const axisLength = 5;
+
+  // X轴（红）
+  scene.add(
+    new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([
+        targetToThree(0, 0, 0),
+        targetToThree(axisLength, 0, 0),
+      ]),
+      new THREE.LineBasicMaterial({ color: 0xff0000, linewidth: 2 })
+    )
+  );
+
+  // Y轴（绿）
+  scene.add(
+    new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([
+        targetToThree(0, 0, 0),
+        targetToThree(0, axisLength, 0),
+      ]),
+      new THREE.LineBasicMaterial({ color: 0x00ff00, linewidth: 2 })
+    )
+  );
+
+  // Z轴（蓝）
+  scene.add(
+    new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([
+        targetToThree(0, 0, 0),
+        targetToThree(0, 0, axisLength),
+      ]),
+      new THREE.LineBasicMaterial({ color: 0x0000ff, linewidth: 2 })
+    )
+  );
+
+  // 坐标轴标签
+  const createAxisLabel = (text, color, targetPos) => {
+    const div = document.createElement("div");
+    div.textContent = text;
+    div.style = `color: ${color}; font-family: Arial; font-size: 14px; font-weight: bold; background: rgba(	211,211,211,0.7); padding: 2px 6px; border-radius: 3px;`;
+    const label = new CSS2DObject(div);
+    label.position.copy(targetToThree(targetPos.x, targetPos.y, targetPos.z));
+    scene.add(label);
   };
 
-  // 定义各个关节的初始角度（单位：弧度）
+  createAxisLabel("X", "#ff0000", { x: axisLength + 0.3, y: 0, z: 0 });
+  createAxisLabel("Y", "#00ff00", { x: 0, y: axisLength + 0.3, z: 0 });
+  createAxisLabel("Z", "#0000ff", { x: 0, y: 0, z: axisLength + 0.3 });
+};
+
+/**
+ * 初始化变换控制器
+ */
+const initTransformControls = () => {
+  transformControls = new TransformControls(camera, renderer.domElement);
+  transformControls.mode = "translate";
+  scene.add(transformControls);
+
+  // 拖拽事件
+  transformControls.addEventListener("change", () => {
+    if (endEffector) {
+      const targetPos = threeToTarget(endEffector.position);
+      state.endX = targetPos.x;
+      state.endY = targetPos.y;
+      state.endZ = targetPos.z;
+
+      // 记录轨迹
+      if (state.isRecording) {
+        const currentPoint = { ...targetPos };
+        const isSameAsLast =
+          state.lastRecordedPoint &&
+          Math.abs(currentPoint.x - state.lastRecordedPoint.x) < 0.01 &&
+          Math.abs(currentPoint.y - state.lastRecordedPoint.y) < 0.01 &&
+          Math.abs(currentPoint.z - state.lastRecordedPoint.z) < 0.01;
+
+        if (!isSameAsLast) {
+          state.tempTrajectory.push(currentPoint);
+          state.lastRecordedPoint = currentPoint;
+          updateTempTrajectoryLine();
+        }
+      }
+    }
+  });
+
+  // 拖拽开始/结束
+  transformControls.addEventListener("start", () => (controls.enabled = false));
+  transformControls.addEventListener("end", () => (controls.enabled = true));
+};
+
+/**
+ * 加载机器人模型
+ */
+/**
+ * 加载机器人模型
+ */
+const loadRobotModel = () => {
+  const loader = new URDFLoader();
+  loader.packages = { aubo_description: "/aubo_description" };
+
   const INITIAL_POSITIONS = {
     shoulder_joint: 0.0,
     upperArm_joint: 0.0,
-    foreArm_joint: 1.57, // 约90度
+    foreArm_joint: 1.57,
     wrist1_joint: 0.0,
     wrist2_joint: 1.57,
     wrist3_joint: 0.0,
     finger_joint: 0.0,
   };
 
-  // 加载 URDF 模型文件
   loader.load("./aubo_description/urdf/aubo_i5.urdf", (result) => {
-    robot = result; // 保存机器人模型引用
-    robot.rotation.x = -Math.PI / 2; // 初始旋转，调整朝向
-    scene.add(robot); // 将机器人添加进场景
+    robot = result;
 
-    // 计算机器人包围盒，用于设置相机初始位置
-    const box = new THREE.Box3().setFromObject(robot);
-    const center = box.getCenter(new THREE.Vector3()); // 模型中心点
-    const size = box.getSize(new THREE.Vector3()).length(); // 模型对角线长度
+    //  1. 模型缩放：放大10倍（根据实际大小调整，可改为20、5等）
+    // 原因：URDF模型默认单位可能是米，Three.js场景中显小，缩放后适配视野
+    robot.scale.set(2, 2, 2);
 
-    // 遍历初始关节角度配置，为每个关节设置初始值
+    // 2. 模型位置调整：让底座贴合地面（Y=0）、居中（X/Z=0）
+    // 若模型仍偏移，可微调x/y/z值（如x: 1 → 向右移1单位，y: 0.5 → 向上移0.5单位）
+    robot.position.set(0, 0, 0);
+
+    // 3  绕X轴旋转-90度，让机械臂从“躺下”变为“立起”
+    // 原因：URDF模型默认Z轴朝上，与统一坐标系的Y轴朝上冲突，旋转后对齐Z上方向
+    robot.rotation.x = -Math.PI / 2;
+    scene.add(robot);
+
+    // 找到末端执行器（根据实际URDF结构调整名称）
+    endEffector = robot.getObjectByName("wrist3_link"); // 需与URDF中的末端连杆名称匹配
+    if (endEffector) {
+      transformControls.attach(endEffector);
+      const targetPos = threeToTarget(endEffector.position);
+      state.endX = targetPos.x;
+      state.endY = targetPos.y;
+      state.endZ = targetPos.z;
+    }
+
+    // 设置初始关节角度
     Object.entries(INITIAL_POSITIONS).forEach(([jointName, value]) => {
       if (robot.joints[jointName]) {
         robot.joints[jointName].setJointValue(value);
       }
     });
 
-    // 设置相机初始位置，使模型处于视野中央且有一定距离
-    camera.position.set(
-      center.x + 10 * size,
-      center.y - 1 * size, // Y轴向下偏移
-      center.z + 8 * size // Z轴向后偏移
-    );
-    camera.lookAt(new THREE.Vector3(center.x, center.y, center.z)); // 看向模型中心
+    // 调整相机位置（可选：若旋转后模型超出视野，微调相机位置）
+    const box = new THREE.Box3().setFromObject(robot);
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3()).length();
 
-    controls.update(); // 更新控制器
+    // 微调相机Y轴位置（让立起的机械臂居中显示）
+    camera.position.set(
+      center.x +2,
+      center.y + 2, // 原5→2：降低Y轴高度，适配立起的模型
+      center.z + 7
+    );
+    camera.lookAt(center);
+    controls.update();
   });
 };
 
 /**
- * 动画循环，用于实时渲染和控制更新
+ * 更新临时轨迹线
+ */
+const updateTempTrajectoryLine = () => {
+  if (tempTrajectoryLine) {
+    scene.remove(tempTrajectoryLine);
+    tempTrajectoryLine.geometry.dispose();
+  }
+
+  if (state.tempTrajectory.length > 1) {
+    const points = state.tempTrajectory.map((p) =>
+      targetToThree(p.x, p.y, p.z)
+    );
+    const geo = new THREE.BufferGeometry().setFromPoints(points);
+    const mat = new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 2 });
+    tempTrajectoryLine = new THREE.Line(geo, mat);
+    scene.add(tempTrajectoryLine);
+  }
+};
+
+/**
+ * 更新保存的轨迹线
+ */
+const updateSavedTrajectoryLine = () => {
+  if (trajectoryLine) {
+    scene.remove(trajectoryLine);
+    trajectoryLine.geometry.dispose();
+  }
+
+  if (state.trajectory.length > 1) {
+    const points = state.trajectory.map((p) => targetToThree(p.x, p.y, p.z));
+    const geo = new THREE.BufferGeometry().setFromPoints(points);
+    const mat = new THREE.LineBasicMaterial({ color: 0x00ffff, linewidth: 2 });
+    trajectoryLine = new THREE.Line(geo, mat);
+    scene.add(trajectoryLine);
+  }
+};
+
+/**
+ * 动画循环
  */
 const animate = () => {
   requestAnimationFrame(animate);
-  controls.update(); // 更新轨道控制器
-  renderer.render(scene, camera); // 渲染当前帧
+  controls.update();
+  renderer.render(scene, camera);
+  labelRenderer.render(scene, camera);
 };
 
 /**
- * 处理窗口大小变化，调整相机和渲染器
+ * 窗口大小调整
  */
 const handleResize = () => {
-  camera.aspect = container.value.clientWidth / container.value.clientHeight;
+  const width = container.value.clientWidth;
+  const height = container.value.clientHeight;
+
+  camera.aspect = width / height;
   camera.updateProjectionMatrix();
-  renderer.setSize(container.value.clientWidth, container.value.clientHeight);
+  renderer.setSize(width, height);
+  labelRenderer.setSize(width, height);
 };
 
 /**
- * 监听来自控制面板的关节变化事件，更新对应机器人关节
+ * 机械臂关节控制
  */
-// const handleJointChange = ({ jointName, angle, jointValues }) => {
-//   if (robot && robot.joints[jointName]) {
-//     robot.joints[jointName].setJointValue(angle);
-//   }
-// };
-
 const handleJointChange = ({ jointValues }) => {
   if (!robot) return;
 
-  // 定义机器人关节的顺序，必须与子组件中的 jointValues 顺序完全一致
   const jointOrder = [
     "shoulder_joint",
     "upperArm_joint",
@@ -185,14 +436,19 @@ const handleJointChange = ({ jointValues }) => {
     const jointName = jointOrder[index];
     if (robot.joints[jointName]) {
       robot.joints[jointName].setJointValue(value);
-    } else {
-      console.warn(`未找到关节: ${jointName}`);
+      // 更新末端坐标
+      if (endEffector) {
+        const targetPos = threeToTarget(endEffector.position);
+        state.endX = targetPos.x;
+        state.endY = targetPos.y;
+        state.endZ = targetPos.z;
+      }
     }
   });
 };
 
 /**
- * 监听来自控制面板的夹爪变化事件，更新夹爪关节（通常是 finger_joint）
+ * 夹爪控制
  */
 const handleGripperChange = (value) => {
   if (robot && robot.joints.finger_joint) {
@@ -201,33 +457,113 @@ const handleGripperChange = (value) => {
 };
 
 /**
- * 重置所有关节到初始位置
+ * 重置关节
  */
 const resetAllJoints = (positions) => {
   if (!robot) return;
 
-  // 遍历传入的关节初始值，逐个设置
   Object.entries(positions).forEach(([jointName, value]) => {
     if (robot.joints[jointName]) {
       robot.joints[jointName].setJointValue(value);
     }
   });
+
+  // 更新末端坐标
+  if (endEffector) {
+    const targetPos = threeToTarget(endEffector.position);
+    state.endX = targetPos.x;
+    state.endY = targetPos.y;
+    state.endZ = targetPos.z;
+  }
 };
 
-// 组件挂载后初始化场景并启动动画循环
+/**
+ * 轨迹记录控制
+ */
+const toggleRecord = () => {
+  if (state.isRecording) {
+    state.isRecording = false;
+    state.trajectory = [...state.tempTrajectory];
+    updateSavedTrajectoryLine();
+  } else {
+    state.tempTrajectory = [];
+    state.lastRecordedPoint = null;
+    if (endEffector) {
+      const initialPoint = threeToTarget(endEffector.position);
+      state.tempTrajectory.push(initialPoint);
+      state.lastRecordedPoint = initialPoint;
+    }
+    state.isRecording = true;
+    updateTempTrajectoryLine();
+  }
+};
+
+/**
+ * 轨迹回放
+ */
+const playRecord = () => {
+  if (state.trajectory.length < 2 || !endEffector) return;
+
+  state.isPlaying = true;
+  transformControls.enabled = false;
+  let index = 0;
+  const totalPoints = state.trajectory.length;
+
+  playInterval = setInterval(() => {
+    if (index >= totalPoints) {
+      clearInterval(playInterval);
+      state.isPlaying = false;
+      transformControls.enabled = true;
+      playProgress.value = 0;
+      return;
+    }
+
+    const point = state.trajectory[index];
+    const threePos = targetToThree(point.x, point.y, point.z);
+    endEffector.position.copy(threePos);
+
+    state.endX = point.x;
+    state.endY = point.y;
+    state.endZ = point.z;
+
+    playProgress.value = index / totalPoints;
+    index++;
+  }, 50);
+};
+
+/**
+ * 清除轨迹
+ */
+const clearRecord = () => {
+  state.trajectory = [];
+  state.tempTrajectory = [];
+  state.lastRecordedPoint = null;
+
+  if (trajectoryLine) {
+    scene.remove(trajectoryLine);
+    trajectoryLine = null;
+  }
+  if (tempTrajectoryLine) {
+    scene.remove(tempTrajectoryLine);
+    tempTrajectoryLine = null;
+  }
+};
+
+// 生命周期
 onMounted(() => {
   initScene();
   animate();
-  window.addEventListener("resize", handleResize); // 监听窗口 resize 事件
+  window.addEventListener("resize", handleResize);
 });
 
-// 组件卸载前清理事件监听和释放资源
 onBeforeUnmount(() => {
   window.removeEventListener("resize", handleResize);
+  if (playInterval) clearInterval(playInterval);
   if (container.value && renderer.domElement) {
     container.value.removeChild(renderer.domElement);
+    container.value.removeChild(labelRenderer.domElement);
   }
-  renderer.dispose(); // 释放 WebGL 资源
+  renderer.dispose();
 });
 </script>
 
@@ -235,12 +571,68 @@ onBeforeUnmount(() => {
 .robot-model-container {
   position: relative;
   width: 100%;
-  height: 100%;
-  display: flex;
+  height: 100vh;
+  overflow: hidden;
 }
 
 .canvas-container {
-  flex: 1;
+  width: 100%;
+  height: 100%;
   background: linear-gradient(to bottom right, #f0f0f0, #ffffff);
+}
+
+.control-panels {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 100;
+}
+
+.trajectory-controls {
+  background: rgba(20, 20, 20, 0.9);
+  padding: 12px;
+  border-radius: 6px;
+  color: #fff;
+  font-family: Arial, sans-serif;
+}
+
+.controls-title {
+  font-weight: bold;
+  margin-bottom: 8px;
+  color: #fff;
+}
+
+button {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  background: #444;
+  color: white;
+  font-size: 14px;
+  margin-right: 6px;
+}
+
+button:hover:not(:disabled) {
+  background: #666;
+}
+
+button.active {
+  background: #2196f3;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.info {
+  margin-top: 10px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #eee;
 }
 </style>
