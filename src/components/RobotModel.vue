@@ -66,6 +66,15 @@ import RobotControl from "./RobotControl.vue"; // 确保该组件路径正确
 // 容器引用
 const container = ref(null);
 
+// 部件选择相关状态
+const selectedPart = ref(null); // 当前选中的部件对象
+const selectedPartName = ref("无"); // 选中部件名称
+const raycaster = new THREE.Raycaster(); // 射线检测（用于点击）
+const mouse = new THREE.Vector2(); // 鼠标坐标
+
+// 存储所有部件信息（名称+对象+原始材质）
+const allRobotParts = ref([]);
+
 // 轨迹记录相关状态
 const state = reactive({
   isRecording: false,
@@ -192,6 +201,9 @@ const initScene = () => {
 
   // 加载机器人模型
   loadRobotModel();
+
+  //   新增：绑定鼠标点击事件
+  container.value.addEventListener("click", handleMouseClick);
 };
 
 /**
@@ -323,6 +335,14 @@ const loadRobotModel = () => {
     robot.rotation.x = -Math.PI / 2;
     scene.add(robot);
 
+    // 👇 新增：获取所有部件并初始化
+    allRobotParts.value = getRobotAllParts(robot);
+    initPartsMaterial();
+    console.log(
+      "URDF模型部件列表：",
+      allRobotParts.value.map((p) => p.name)
+    );
+
     // 找到末端执行器（根据实际URDF结构调整名称）
     endEffector = robot.getObjectByName("wrist3_link"); // 需与URDF中的末端连杆名称匹配
     if (endEffector) {
@@ -347,13 +367,136 @@ const loadRobotModel = () => {
 
     // 微调相机Y轴位置（让立起的机械臂居中显示）
     camera.position.set(
-      center.x +2,
+      center.x + 2,
       center.y + 2, // 原5→2：降低Y轴高度，适配立起的模型
       center.z + 7
     );
     camera.lookAt(center);
     controls.update();
   });
+};
+
+// 递归遍历所有节点，收集所有 Mesh 并关联到对应的 URDFLink
+const getRobotAllParts = (parent) => {
+  const parts = [];
+
+  // 递归函数：穿透所有层级，寻找 Mesh
+  const traverse = (node) => {
+    // 1. 如果当前节点是 Mesh，记录并关联到其所属的 URDFLink
+    if (node.type === "Mesh") {
+      // 确保 Mesh 可见且有材质（避免无法点击）
+      node.visible = true;
+      if (!node.material) {
+        node.material = new THREE.MeshStandardMaterial({
+          color: 0x888888,
+          metalness: 0.5,
+          roughness: 0.5,
+        });
+      }
+
+      // 向上查找最近的 URDFLink 作为部件名称
+      const linkName = findParentURDFLinkName(node);
+      if (linkName) {
+        parts.push({
+          name: linkName, // 用 URDFLink 名称作为部件名
+          object: node, // 实际的 Mesh 对象
+          originalMaterial: node.material.clone(), // 保存原始材质
+        });
+      }
+    }
+
+    // 2. 无论当前节点是什么类型，只要有子节点就继续递归（关键！）
+    if (node.children && node.children.length > 0) {
+      node.children.forEach((child) => traverse(child));
+    }
+  };
+
+  // 从根节点开始遍历（parent 是 robot 对象）
+  traverse(parent);
+
+  // 去重：同一 URDFLink 可能包含多个 Mesh，只保留第一个
+  return Array.from(new Map(parts.map((item) => [item.name, item])).values());
+};
+
+// 辅助函数：向上追溯找到最近的 URDFLink 名称
+const findParentURDFLinkName = (node) => {
+  let current = node.parent;
+  while (current) {
+    // 找到类型为 URDFLink 且有名称的父节点
+    if (current.type === "URDFLink" && current.name) {
+      return current.name;
+    }
+    current = current.parent; // 继续向上找
+  }
+  return "unknown_part"; // 未找到时的默认名称
+};
+
+/**
+ * 初始化所有部件的材质，为选中状态做准备
+ */
+const initPartsMaterial = () => {
+  allRobotParts.value.forEach((part) => {
+    // 为每个部件保存原始材质，后续用于取消选中时恢复
+    part.object.userData.originalMaterial = part.originalMaterial;
+  });
+};
+
+/**
+ * 处理鼠标点击事件，检测并选中模型部件
+ * @param {MouseEvent} event - 鼠标事件
+ */
+const handleMouseClick = (event) => {
+  console.log("点击模具");
+  if (!robot) return;
+  console.log("点击模具1");
+
+  // 计算鼠标在标准化设备坐标中的位置（-1 到 1）
+  const rect = container.value.getBoundingClientRect();
+  mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+  // 更新射线投射器
+  raycaster.setFromCamera(mouse, camera);
+
+  // 获取所有可点击的部件Mesh
+  const clickableObjects = allRobotParts.value.map((part) => part.object);
+  console.log(clickableObjects);
+
+  // 检测射线与哪些对象相交
+  const intersects = raycaster.intersectObjects(clickableObjects, true);
+
+  if (intersects.length > 0) {
+    // 取消上一个选中部件的高亮
+    if (selectedPart.value) {
+      selectedPart.value.object.material = selectedPart.value.originalMaterial;
+    }
+
+    // 获取第一个相交的部件
+    const hitObject = intersects[0].object;
+    // 找到对应的部件信息
+    const hitPart = allRobotParts.value.find(
+      (part) => part.object === hitObject
+    );
+
+    if (hitPart) {
+      // 高亮选中的部件（用红色材质）
+      hitObject.material = new THREE.MeshStandardMaterial({
+        color: 0xff0000,
+        emissive: 0x222222,
+      });
+      // 更新选中状态
+      selectedPart.value = hitPart;
+      selectedPartName.value = hitPart.name;
+      console.log("选中部件：", hitPart.name, hitPart.object);
+    }
+  } else {
+    // 点击空白处，取消选中
+    if (selectedPart.value) {
+      selectedPart.value.object.material = selectedPart.value.originalMaterial;
+      selectedPart.value = null;
+      selectedPartName.value = "无";
+    }
+  }
 };
 
 /**
