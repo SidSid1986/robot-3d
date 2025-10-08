@@ -290,9 +290,6 @@ const initTransformControls = () => {
 /**
  * 加载机器人模型
  */
-/**
- * 加载机器人模型
- */
 const loadRobotModel = () => {
   const loader = new URDFLoader();
   loader.packages = { aubo_description: "/aubo_description" };
@@ -306,6 +303,8 @@ const loadRobotModel = () => {
     wrist3_joint: 0.0,
     finger_joint: 0.0,
   };
+
+  let meshNames = [];
 
   loader.load("./aubo_description/urdf/aubo_i5.urdf", (result) => {
     robot = result;
@@ -322,6 +321,23 @@ const loadRobotModel = () => {
     // 原因：URDF模型默认Z轴朝上，与统一坐标系的Y轴朝上冲突，旋转后对齐Z上方向
     robot.rotation.x = -Math.PI / 2;
     scene.add(robot);
+
+    robot.traverse((child) => {
+      console.log(child);
+      if (child instanceof THREE.Mesh) {
+        // 设置Mesh名称
+        child.name = "mesh_" + meshNames.length;
+        meshNames.push(child.name);
+        console.log(meshNames);
+        // 添加点击事件
+        child.onClick = () => {
+          // 变色
+          child.material.color.set(0xff0000);
+          // 输出名称
+          console.log(child.name);
+        };
+      }
+    });
 
     // 找到末端执行器（根据实际URDF结构调整名称）
     endEffector = robot.getObjectByName("wrist3_link"); // 需与URDF中的末端连杆名称匹配
