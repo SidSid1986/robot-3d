@@ -365,8 +365,7 @@ const recordTrackedMeshTrajectory = () => {
  */
 const loadRobotModel = () => {
   const loader = new URDFLoader();
-  // loader.packages = { aubo_description: "/aubo_description" };
-  loader.packages = { kr: "/kr" };
+  loader.packages = { aubo_description: "/aubo_description" };
 
   const INITIAL_POSITIONS = {
     shoulder_joint: 0.0,
@@ -377,83 +376,56 @@ const loadRobotModel = () => {
     wrist3_joint: 0.0,
     finger_joint: 0.0,
   };
-
-  // loader.load("./aubo_description/urdf/aubo_i5.urdf", (result) => {
-  loader.load("./kr/urdf/kr1.urdf", (result) => {
+  //robotiq_arg2f_base_link
+  loader.load("./aubo_description/urdf/aubo_i5.urdf", (result) => {
     robot = result;
-    console.log(robot);
 
     robot.scale.set(2, 2, 2);
     robot.rotation.x = -Math.PI / 2;
     robot.position.set(0, 0, 0);
 
-    // 创建一个 Group 用于组织机器人模型
-    robotGroup = new THREE.Group();
-    scene.add(robotGroup);
-    robotGroup.add(robot);
+    //  先创建一个 Group，把 robot 放到 Group 里，再把 Group 添加到 scene
+    robotGroup = new THREE.Group(); //  新增：创建一个专门装机器人的 Group
+    scene.add(robotGroup); //   把 Group 添加到场景中
 
-    // 🔍 遍历整个机器人模型，查找 name 为空（""）的 Mesh，即你默认选中的末端
-    let trackedMesh = null; // 这就是你要操作的末端 Mesh
+    robotGroup.add(robot); //  把机器人模型添加到这个 Group 中
+
+    //   在加载完机器人模型后，自动查找 name 为空（显示为 Unnamed）的 Mesh
+    let trackedMesh = null; // 新增： 要跟踪的 Mesh（原本是 Unnamed）
 
     robot.traverse((child) => {
-      // 打印子对象信息，用于调试（可选，正式环境可删）
-      // console.log(
-      //   "子对象名称：",
-      //   child.name,
-      //   "类型：",
-      //   child.type,
-      //   "父级名称：",
-      //   child.parent?.name
-      // );
-
-      // 找到第一个 name 为空的 Mesh，即你默认选中的那个（例如 robotiq_arg2f_base_link.stl）
       if (
         child instanceof THREE.Mesh &&
         (!child.name || child.name.trim() === "")
+        // (child.name === 'shell_ncl1_4')  //    Mesh 的实际名称
       ) {
         trackedMesh = child;
-        console.log("✅ 已找到默认选中的末端 Mesh（name 为空）：", trackedMesh);
+        console.log(
+          "已自动锁定要跟踪的 Mesh（当前为 'Unnamed'）：",
+          trackedMesh
+        );
       }
     });
 
-    // 不再使用 getObjectByName("wrist3_link")，而是用上面找到的 trackedMesh
-    if (trackedMesh) {
-      // 挂载 TransformControls 到这个末端 Mesh
-      transformControls.attach(trackedMesh);
-      // 直接把 trackedMesh 赋值给 endEffector，后续统一用 endEffector 操作
-      endEffector = trackedMesh;
-      // 获取该 Mesh 的世界坐标，用于显示末端位置
-      const worldPos = new THREE.Vector3();
-      trackedMesh.getWorldPosition(worldPos);
+    // 将 trackedMesh 挂载到全局，或至少在后续函数中可访问（比如放到组件顶层作用域）
 
-      const targetPos = threeToTarget(worldPos); // 假设你有这个坐标转换函数
+    trackedMeshForTrajectory.value = trackedMesh; // 临时方案， 后面用 ref 或 reactive 包装
+
+    endEffector = robot.getObjectByName("wrist3_link");
+    if (endEffector) {
+      transformControls.attach(endEffector);
+      const targetPos = threeToTarget(endEffector.position);
       state.endX = targetPos.x;
       state.endY = targetPos.y;
       state.endZ = targetPos.z;
-
-      console.log(
-        "  末端世界坐标：X:",
-        state.endX.toFixed(2),
-        "Y:",
-        state.endY.toFixed(2),
-        "Z:",
-        state.endZ.toFixed(2)
-      );
-
-      // 可选：将这个 Mesh 也存为全局，用于后续轨迹记录等
-      trackedMeshForTrajectory.value = trackedMesh;
-    } else {
-      console.warn("⚠️ 未找到 name 为空的末端 Mesh，请检查模型加载结构！");
     }
 
-    // 初始化关节位置（这部分逻辑不变）
     Object.entries(INITIAL_POSITIONS).forEach(([jointName, value]) => {
       if (robot.joints[jointName]) {
         robot.joints[jointName].setJointValue(value);
       }
     });
 
-    // 设置相机视角
     const box = new THREE.Box3().setFromObject(robot);
     const center = box.getCenter(new THREE.Vector3());
     const size = box.getSize(new THREE.Vector3()).length();
@@ -492,7 +464,6 @@ const setupMouseClick = () => {
         });
 
         if (selectedMesh === mesh) {
-          console.log(11111);
           // 点击相同 Mesh → 取消选中
           if (mesh.material && mesh.userData.originalColor) {
             mesh.material.color.copy(mesh.userData.originalColor);
@@ -512,7 +483,6 @@ const setupMouseClick = () => {
         } else {
           // 点击新 Mesh → 高亮
           if (selectedMesh) {
-            console.log(222222);
             // 清除之前选中的
             if (selectedMesh.material && selectedMesh.userData.originalColor) {
               selectedMesh.material.color.copy(
@@ -537,9 +507,7 @@ const setupMouseClick = () => {
           }
 
           selectedMesh = mesh;
-          console.log(mesh);
           const worldPos = mesh.getWorldPosition(new THREE.Vector3());
-          console.log(worldPos);
           selectedMeshInfo.name = mesh.name || "Unnamed";
           selectedMeshInfo.id = mesh.id;
           selectedMeshInfo.x = worldPos.x;
@@ -590,6 +558,24 @@ const updateTempTrajectoryLine = () => {
 };
 
 /**
+ * 更新保存的轨迹线
+ */
+const updateSavedTrajectoryLine = () => {
+  if (trajectoryLine) {
+    scene.remove(trajectoryLine);
+    trajectoryLine.geometry.dispose();
+  }
+
+  if (state.trajectory.length > 1) {
+    const points = state.trajectory.map((p) => targetToThree(p.x, p.y, p.z));
+    const geo = new THREE.BufferGeometry().setFromPoints(points);
+    const mat = new THREE.LineBasicMaterial({ color: 0x00ffff, linewidth: 2 });
+    trajectoryLine = new THREE.Line(geo, mat);
+    scene.add(trajectoryLine);
+  }
+};
+
+/**
  * 动画循环
  */
 const animate = () => {
@@ -631,7 +617,6 @@ const handleJointChange = ({ jointValues }) => {
     const jointName = jointOrder[index];
     if (robot.joints[jointName]) {
       robot.joints[jointName].setJointValue(value);
-      console.log("移动了", endEffector);
       // 更新末端坐标
       if (endEffector) {
         const targetPos = threeToTarget(endEffector.position);
