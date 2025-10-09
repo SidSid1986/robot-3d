@@ -46,6 +46,7 @@
         <div class="controls-title">🔧 当前选中部件</div>
         <div v-if="selectedMeshInfo.name">
           <p><strong>名称:</strong> {{ selectedMeshInfo.name }}</p>
+          <p><strong>id:</strong> {{ selectedMeshInfo.id }}</p>
           <p>
             <strong>世界坐标:</strong> X: {{ selectedMeshInfo.x.toFixed(2) }},
             Y: {{ selectedMeshInfo.y.toFixed(2) }}, Z:
@@ -86,8 +87,11 @@ const mouse = new THREE.Vector2();
 let selectedMesh = null; // 当前选中的 Mesh，可用于取消高亮等、
 let robotGroup = null;
 
+const trackedMeshForTrajectory = ref(null);
+
 // 当前选中的 Mesh 信息，用于在页面显示
 const selectedMeshInfo = reactive({
+  id: null,
   name: "", // Mesh 名称
   x: 0, // 世界坐标 X
   y: 0, // 世界坐标 Y
@@ -318,6 +322,40 @@ const initTransformControls = () => {
   transformControls.addEventListener("end", () => (controls.enabled = true));
 };
 
+//  新增：记录关键 Mesh（trackedMesh）的轨迹点
+const recordTrackedMeshTrajectory = () => {
+  if (!trackedMeshForTrajectory.value) {
+    console.warn(
+      "trackedMeshForTrajectory 未找到，请检查模型是否包含 name 为空的 Mesh"
+    );
+    return;
+  }
+
+  // 获取世界坐标
+  const worldPos = trackedMeshForTrajectory.value.getWorldPosition(
+    new THREE.Vector3()
+  );
+  const targetPos = threeToTarget(worldPos);
+
+  const currentPoint = {
+    x: targetPos.x,
+    y: targetPos.y,
+    z: targetPos.z,
+  };
+
+  // 去重（避免连续帧太近导致轨迹点过多）
+  const isSameAsLast =
+    state.lastRecordedPoint &&
+    Math.abs(currentPoint.x - state.lastRecordedPoint.x) < 0.01 &&
+    Math.abs(currentPoint.y - state.lastRecordedPoint.y) < 0.01 &&
+    Math.abs(currentPoint.z - state.lastRecordedPoint.z) < 0.01;
+
+  if (!isSameAsLast) {
+    state.tempTrajectory.push(currentPoint);
+    state.lastRecordedPoint = currentPoint;
+    updateTempTrajectoryLine(); // 实时画出轨迹线（黄色）
+  }
+};
 /**
  * 加载机器人模型
  */
@@ -347,6 +385,27 @@ const loadRobotModel = () => {
     scene.add(robotGroup); //   把 Group 添加到场景中
 
     robotGroup.add(robot); //  把机器人模型添加到这个 Group 中
+
+    //   在加载完机器人模型后，自动查找 name 为空（显示为 Unnamed）的 Mesh
+    let trackedMesh = null; // 新增： 要跟踪的 Mesh（原本是 Unnamed）
+
+    robot.traverse((child) => {
+      if (
+        child instanceof THREE.Mesh &&
+        (!child.name || child.name.trim() === "")
+        // (child.name === 'shell_ncl1_4')  //    Mesh 的实际名称
+      ) {
+        trackedMesh = child;
+        console.log(
+          "已自动锁定要跟踪的 Mesh（当前为 'Unnamed'）：",
+          trackedMesh
+        );
+      }
+    });
+
+    // 将 trackedMesh 挂载到全局，或至少在后续函数中可访问（比如放到组件顶层作用域）
+
+    trackedMeshForTrajectory.value = trackedMesh; // 临时方案， 后面用 ref 或 reactive 包装
 
     endEffector = robot.getObjectByName("wrist3_link");
     if (endEffector) {
@@ -394,6 +453,12 @@ const setupMouseClick = () => {
       const mesh = intersect.object;
 
       if (mesh instanceof THREE.Mesh) {
+        console.log("🔍 被点击的 Mesh:", {
+          name: mesh.name,
+          parent: mesh.parent ? mesh.parent.name : "无父级",
+          object3d: mesh,
+        });
+
         if (selectedMesh === mesh) {
           // 点击相同 Mesh → 取消选中
           if (mesh.material && mesh.userData.originalColor) {
@@ -407,6 +472,7 @@ const setupMouseClick = () => {
 
           selectedMesh = null;
           selectedMeshInfo.name = "";
+          selectedMeshInfo.id = null;
           selectedMeshInfo.x = 0;
           selectedMeshInfo.y = 0;
           selectedMeshInfo.z = 0;
@@ -439,6 +505,7 @@ const setupMouseClick = () => {
           selectedMesh = mesh;
           const worldPos = mesh.getWorldPosition(new THREE.Vector3());
           selectedMeshInfo.name = mesh.name || "Unnamed";
+          selectedMeshInfo.id = mesh.id;
           selectedMeshInfo.x = worldPos.x;
           selectedMeshInfo.y = worldPos.y;
           selectedMeshInfo.z = worldPos.z;
@@ -458,6 +525,7 @@ const setupMouseClick = () => {
 
         selectedMesh = null;
         selectedMeshInfo.name = "";
+        selectedMeshInfo.id = null;
         selectedMeshInfo.x = 0;
         selectedMeshInfo.y = 0;
         selectedMeshInfo.z = 0;
@@ -554,6 +622,8 @@ const handleJointChange = ({ jointValues }) => {
       }
     }
   });
+
+  recordTrackedMeshTrajectory();
 };
 
 /**
