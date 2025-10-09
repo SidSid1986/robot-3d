@@ -98,6 +98,8 @@ const selectedMeshInfo = reactive({
   z: 0, // 世界坐标 Z
 });
 
+//记录关节
+
 // 容器引用
 const container = ref(null);
 
@@ -111,6 +113,8 @@ const state = reactive({
   endY: 0,
   endZ: 0,
   lastRecordedPoint: null,
+  jointTrajectory: [], // 正式记录的关节角度轨迹
+  tempJointTrajectory: [], // 临时记录中的关节角度轨迹
 });
 
 // 计算属性
@@ -622,7 +626,8 @@ const handleJointChange = ({ jointValues }) => {
       }
     }
   });
-
+  //  记录当前关节角度
+  state.tempJointTrajectory.push([...jointValues]); // 保存当前帧的关节值
   recordTrackedMeshTrajectory();
 };
 
@@ -662,16 +667,12 @@ const resetAllJoints = (positions) => {
 const toggleRecord = () => {
   if (state.isRecording) {
     state.isRecording = false;
-    state.trajectory = [...state.tempTrajectory];
-    updateSavedTrajectoryLine();
+    state.jointTrajectory = [...state.tempJointTrajectory]; // 保存正式关节轨迹
+    state.trajectory = [...state.tempTrajectory]; // 如果你仍想记录末端点，也可以存
   } else {
     state.tempTrajectory = [];
+    state.tempJointTrajectory = []; // 清空临时关节轨迹
     state.lastRecordedPoint = null;
-    if (endEffector) {
-      const initialPoint = threeToTarget(endEffector.position);
-      state.tempTrajectory.push(initialPoint);
-      state.lastRecordedPoint = initialPoint;
-    }
     state.isRecording = true;
     updateTempTrajectoryLine();
   }
@@ -681,15 +682,15 @@ const toggleRecord = () => {
  * 轨迹回放
  */
 const playRecord = () => {
-  if (state.trajectory.length < 2 || !endEffector) return;
+  if (state.jointTrajectory.length < 2) return; // 确保有数据
 
   state.isPlaying = true;
   transformControls.enabled = false;
   let index = 0;
-  const totalPoints = state.trajectory.length;
+  const totalFrames = state.jointTrajectory.length;
 
   playInterval = setInterval(() => {
-    if (index >= totalPoints) {
+    if (index >= totalFrames) {
       clearInterval(playInterval);
       state.isPlaying = false;
       transformControls.enabled = true;
@@ -697,17 +698,37 @@ const playRecord = () => {
       return;
     }
 
-    const point = state.trajectory[index];
-    const threePos = targetToThree(point.x, point.y, point.z);
-    endEffector.position.copy(threePos);
+    // 当前帧的关节角度数组
+    const jointValues = state.jointTrajectory[index];
 
-    state.endX = point.x;
-    state.endY = point.y;
-    state.endZ = point.z;
+    // 设置每个关节
+    const jointOrder = [
+      "shoulder_joint",
+      "upperArm_joint",
+      "foreArm_joint",
+      "wrist1_joint",
+      "wrist2_joint",
+      "wrist3_joint",
+    ];
 
-    playProgress.value = index / totalPoints;
+    jointValues.forEach((value, i) => {
+      const jointName = jointOrder[i];
+      if (robot.joints[jointName]) {
+        robot.joints[jointName].setJointValue(value);
+      }
+    });
+
+    // 可选：更新末端显示坐标
+    if (endEffector) {
+      const targetPos = threeToTarget(endEffector.position);
+      state.endX = targetPos.x;
+      state.endY = targetPos.y;
+      state.endZ = targetPos.z;
+    }
+
+    playProgress.value = index / totalFrames;
     index++;
-  }, 50);
+  }, 50); // 每50ms一帧，可调整
 };
 
 /**
