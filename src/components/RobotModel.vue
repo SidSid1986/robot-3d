@@ -40,6 +40,23 @@
           状态: {{ statusText }}
         </div>
       </div>
+
+      <!-- Mesh 信息显示面板 -->
+      <div class="mesh-info-panel">
+        <div class="controls-title">🔧 当前选中部件</div>
+        <div v-if="selectedMeshInfo.name">
+          <p><strong>名称:</strong> {{ selectedMeshInfo.name }}</p>
+          <p>
+            <strong>世界坐标:</strong> X: {{ selectedMeshInfo.x.toFixed(2) }},
+            Y: {{ selectedMeshInfo.y.toFixed(2) }}, Z:
+            {{ selectedMeshInfo.z.toFixed(2) }}
+          </p>
+          <p><strong>状态:</strong> 已选中（点击相同部位取消）</p>
+        </div>
+        <div v-else>
+          <p style="font-style: italic; color: #aaa">未选中任何部件</p>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -62,6 +79,20 @@ import {
 } from "three/examples/jsm/renderers/CSS2DRenderer";
 import URDFLoader from "urdf-loader";
 import RobotControl from "./RobotControl.vue"; // 确保该组件路径正确
+
+// 鼠标点击相关
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+let selectedMesh = null; // 当前选中的 Mesh，可用于取消高亮等、
+let robotGroup = null;
+
+// 当前选中的 Mesh 信息，用于在页面显示
+const selectedMeshInfo = reactive({
+  name: "", // Mesh 名称
+  x: 0, // 世界坐标 X
+  y: 0, // 世界坐标 Y
+  z: 0, // 世界坐标 Z
+});
 
 // 容器引用
 const container = ref(null);
@@ -134,7 +165,7 @@ const initScene = () => {
   camera = new THREE.PerspectiveCamera(
     85,
     container.value.clientWidth / container.value.clientHeight,
-    0.1,
+    0.01,
     1000
   );
 
@@ -304,43 +335,20 @@ const loadRobotModel = () => {
     finger_joint: 0.0,
   };
 
-  let meshNames = [];
-
   loader.load("./aubo_description/urdf/aubo_i5.urdf", (result) => {
     robot = result;
 
-    //  1. 模型缩放：放大10倍（根据实际大小调整，可改为20、5等）
-    // 原因：URDF模型默认单位可能是米，Three.js场景中显小，缩放后适配视野
     robot.scale.set(2, 2, 2);
-
-    // 2. 模型位置调整：让底座贴合地面（Y=0）、居中（X/Z=0）
-    // 若模型仍偏移，可微调x/y/z值（如x: 1 → 向右移1单位，y: 0.5 → 向上移0.5单位）
+    robot.rotation.x = -Math.PI / 2;
     robot.position.set(0, 0, 0);
 
-    // 3  绕X轴旋转-90度，让机械臂从“躺下”变为“立起”
-    // 原因：URDF模型默认Z轴朝上，与统一坐标系的Y轴朝上冲突，旋转后对齐Z上方向
-    robot.rotation.x = -Math.PI / 2;
-    scene.add(robot);
+    //  先创建一个 Group，把 robot 放到 Group 里，再把 Group 添加到 scene
+    robotGroup = new THREE.Group(); //  新增：创建一个专门装机器人的 Group
+    scene.add(robotGroup); //   把 Group 添加到场景中
 
-    robot.traverse((child) => {
-      console.log(child);
-      if (child instanceof THREE.Mesh) {
-        // 设置Mesh名称
-        child.name = "mesh_" + meshNames.length;
-        meshNames.push(child.name);
-        console.log(meshNames);
-        // 添加点击事件
-        child.onClick = () => {
-          // 变色
-          child.material.color.set(0xff0000);
-          // 输出名称
-          console.log(child.name);
-        };
-      }
-    });
+    robotGroup.add(robot); //  把机器人模型添加到这个 Group 中
 
-    // 找到末端执行器（根据实际URDF结构调整名称）
-    endEffector = robot.getObjectByName("wrist3_link"); // 需与URDF中的末端连杆名称匹配
+    endEffector = robot.getObjectByName("wrist3_link");
     if (endEffector) {
       transformControls.attach(endEffector);
       const targetPos = threeToTarget(endEffector.position);
@@ -349,29 +357,114 @@ const loadRobotModel = () => {
       state.endZ = targetPos.z;
     }
 
-    // 设置初始关节角度
     Object.entries(INITIAL_POSITIONS).forEach(([jointName, value]) => {
       if (robot.joints[jointName]) {
         robot.joints[jointName].setJointValue(value);
       }
     });
 
-    // 调整相机位置（可选：若旋转后模型超出视野，微调相机位置）
     const box = new THREE.Box3().setFromObject(robot);
     const center = box.getCenter(new THREE.Vector3());
     const size = box.getSize(new THREE.Vector3()).length();
 
-    // 微调相机Y轴位置（让立起的机械臂居中显示）
-    camera.position.set(
-      center.x + 2,
-      center.y + 2, // 原5→2：降低Y轴高度，适配立起的模型
-      center.z + 7
-    );
+    camera.position.set(center.x + 2, center.y + 2, center.z + 7);
     camera.lookAt(center);
     controls.update();
   });
 };
 
+// 设置鼠标点击事件
+const setupMouseClick = () => {
+  const canvas = renderer.domElement;
+
+  canvas.addEventListener("click", onMouseClick, false);
+
+  function onMouseClick(event) {
+    const rect = canvas.getBoundingClientRect();
+    mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+    raycaster.setFromCamera(mouse, camera);
+    const intersects = raycaster
+      .intersectObjects(robotGroup.children, true)
+      .filter((intersect) => intersect.object instanceof THREE.Mesh);
+
+    if (intersects.length > 0) {
+      const intersect = intersects[0];
+      const mesh = intersect.object;
+
+      if (mesh instanceof THREE.Mesh) {
+        if (selectedMesh === mesh) {
+          // 点击相同 Mesh → 取消选中
+          if (mesh.material && mesh.userData.originalColor) {
+            mesh.material.color.copy(mesh.userData.originalColor);
+          } else if (mesh.material) {
+            mesh.material.color.set(0xcccccc);
+          }
+          if (mesh.material) {
+            mesh.material.emissive.setHex(0x000000);
+          }
+
+          selectedMesh = null;
+          selectedMeshInfo.name = "";
+          selectedMeshInfo.x = 0;
+          selectedMeshInfo.y = 0;
+          selectedMeshInfo.z = 0;
+        } else {
+          // 点击新 Mesh → 高亮
+          if (selectedMesh) {
+            // 清除之前选中的
+            if (selectedMesh.material && selectedMesh.userData.originalColor) {
+              selectedMesh.material.color.copy(
+                selectedMesh.userData.originalColor
+              );
+            } else if (selectedMesh.material) {
+              selectedMesh.material.color.set(0xcccccc);
+            }
+            if (selectedMesh.material) {
+              selectedMesh.material.emissive.setHex(0x000000);
+            }
+            selectedMesh = null;
+          }
+
+          if (!mesh.userData.originalColor && mesh.material) {
+            mesh.userData.originalColor = mesh.material.color.clone();
+          }
+
+          if (mesh.material) {
+            mesh.material.color.set(0xff0000);
+            mesh.material.emissive.setHex(0x444444);
+          }
+
+          selectedMesh = mesh;
+          const worldPos = mesh.getWorldPosition(new THREE.Vector3());
+          selectedMeshInfo.name = mesh.name || "Unnamed";
+          selectedMeshInfo.x = worldPos.x;
+          selectedMeshInfo.y = worldPos.y;
+          selectedMeshInfo.z = worldPos.z;
+        }
+      }
+    } else {
+      // 点击空白处 → 清除选中
+      if (selectedMesh) {
+        if (selectedMesh.material && selectedMesh.userData.originalColor) {
+          selectedMesh.material.color.copy(selectedMesh.userData.originalColor);
+        } else if (selectedMesh.material) {
+          selectedMesh.material.color.set(0xcccccc);
+        }
+        if (selectedMesh.material) {
+          selectedMesh.material.emissive.setHex(0x000000);
+        }
+
+        selectedMesh = null;
+        selectedMeshInfo.name = "";
+        selectedMeshInfo.x = 0;
+        selectedMeshInfo.y = 0;
+        selectedMeshInfo.z = 0;
+      }
+    }
+  }
+};
 /**
  * 更新临时轨迹线
  */
@@ -568,6 +661,8 @@ const clearRecord = () => {
 // 生命周期
 onMounted(() => {
   initScene();
+
+  setupMouseClick();
   animate();
   window.addEventListener("resize", handleResize);
 });
@@ -650,5 +745,35 @@ button:disabled {
   font-size: 13px;
   line-height: 1.6;
   color: #eee;
+}
+
+/* Mesh 信息显示面板 */
+.mesh-info-panel {
+  background: rgba(20, 20, 20, 0.9);
+  padding: 12px;
+  border-radius: 6px;
+  color: #fff;
+  font-family: Arial, sans-serif;
+}
+
+.mesh-info-panel .controls-title {
+  font-weight: bold;
+  margin-bottom: 8px;
+  color: #fff;
+}
+
+.mesh-info-panel p {
+  margin: 6px 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.mesh-info-panel p strong {
+  color: #00d4ff;
+}
+
+.mesh-info-panel p:last-child {
+  font-style: italic;
+  color: #aaa;
 }
 </style>
