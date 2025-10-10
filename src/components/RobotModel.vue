@@ -366,7 +366,7 @@ const recordTrackedMeshTrajectory = () => {
 const loadRobotModel = () => {
   const loader = new URDFLoader();
   // loader.packages = { aubo_description: "/aubo_description" };
-  loader.packages = { kr1: "/kr1" };
+  loader.packages = { tu_nguyen: "/tu_nguyen" };
 
   // const INITIAL_POSITIONS = {
   //   shoulder_joint: 0.0,
@@ -378,21 +378,32 @@ const loadRobotModel = () => {
   //   finger_joint: 0.0,
   // };
 
+  // const INITIAL_POSITIONS = {
+  //   joint1: 0.0, // 底座关节给一个小角度
+  //   joint2: 0.0, // 上臂抬起
+  //   joint3: 0.0, // 前臂再抬起
+  //   joint4: 0.0,
+  //   joint5: 0.0,
+  //   joint6: 0.0,
+  // };
+
   const INITIAL_POSITIONS = {
-    joint1: 0.0, // 底座关节给一个小角度
-    joint2: 0.0, // 上臂抬起
-    joint3: 0.0, // 前臂再抬起
-    joint4: 0.0,
-    joint5: 0.0,
-    joint6: 0.0,
+    joint_1: 0.0, // 底座关节给一个小角度
+    joint_2: 0.0, // 上臂抬起
+    joint_3: 0.0, // 前臂再抬起
+    joint_4: 0.0,
+    joint_51: 0.0,
+    joint_52: 0.0,
   };
 
   // loader.load("./aubo_description/urdf/aubo_i5.urdf", (result) => {
-  loader.load("./kr1/urdf/kr1.urdf", (result) => {
+
+  loader.load("./tu_nguyen/urdf/tu_nguyen.urdf", (result) => {
     robot = result;
     console.log(robot);
 
-    robot.scale.set(2, 2, 2);
+    // robot.scale.set(2, 2, 2);
+    robot.scale.set(5, 5, 5);
     robot.rotation.x = -Math.PI / 2;
     robot.position.set(0, 0, 0);
 
@@ -401,7 +412,9 @@ const loadRobotModel = () => {
     scene.add(robotGroup);
     robotGroup.add(robot);
 
-    let trackedMesh = robot.getObjectByName("Link6"); // 直接尝试获取Link6对象
+    // let trackedMesh = robot.getObjectByName("Link6"); // 直接尝试获取Link6对象 kr1
+    let trackedMesh = robot.getObjectByName("link_52"); // 直接尝试获取Link6对象 .
+    console.log(trackedMesh);
 
     if (trackedMesh) {
       // 挂载 TransformControls 到这个末端 Mesh
@@ -616,13 +629,22 @@ const handleJointChange = ({ jointValues }) => {
   //   "wrist3_joint",
   // ];
 
-  const jointOrder = [
-    "joint1",
-    "joint2",
-    "joint3",
-    "joint4",
-    "joint5",
-    "joint6",
+  // const jointOrder = [
+  //   "joint1",
+  //   "joint2",
+  //   "joint3",
+  //   "joint4",
+  //   "joint5",
+  //   "joint6",
+  // ];
+
+   const jointOrder = [
+    "joint_1",
+    "joint_2",
+    "joint_3",
+    "joint_4",
+    "joint_51",
+    "joint_52",
   ];
 
   jointValues.forEach((value, index) => {

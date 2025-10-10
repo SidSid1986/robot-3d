@@ -92,31 +92,58 @@ let animationFrameId = null;
 //   { name: "wrist3_joint", label: "腕关节3", min: -3.04, max: 3.04, step: 0.01 },
 // ]);
 
+// const joints = ref([
+//   {
+//     name: "joint1",
+//     label: "joint1",
+//     min: -3.04,
+//     max: 3.04,
+//     step: 0.01,
+//   },
+//   {
+//     name: "joint2",
+//     label: "joint2",
+//     min: -3.04,
+//     max: 3.04,
+//     step: 0.01,
+//   },
+//   {
+//     name: "joint3",
+//     label: "joint3",
+//     min: -3.04,
+//     max: 3.04,
+//     step: 0.01,
+//   },
+//   { name: "joint4", label: "joint4", min: -3.04, max: 3.04, step: 0.01 },
+//   { name: "joint5", label: "joint5", min: -3.04, max: 3.04, step: 0.01 },
+//   { name: "joint6", label: "joint6", min: -3.04, max: 3.04, step: 0.01 },
+// ]);
+
 const joints = ref([
   {
-    name: "joint1",
-    label: "joint1",
+    name: "joint_1",
+    label: "joint_1",
     min: -3.04,
     max: 3.04,
     step: 0.01,
   },
   {
-    name: "joint2",
-    label: "joint2",
+    name: "joint_2",
+    label: "joint_2",
     min: -3.04,
     max: 3.04,
     step: 0.01,
   },
   {
-    name: "joint3",
-    label: "joint3",
+    name: "joint_3",
+    label: "joint_3",
     min: -3.04,
     max: 3.04,
     step: 0.01,
   },
-  { name: "joint4", label: "joint4", min: -3.04, max: 3.04, step: 0.01 },
-  { name: "joint5", label: "joint5", min: -3.04, max: 3.04, step: 0.01 },
-  { name: "joint6", label: "joint6", min: -3.04, max: 3.04, step: 0.01 },
+  { name: "joint_4", label: "joint_4", min: -3.04, max: 3.04, step: 0.01 },
+  { name: "joint_51", label: "joint_51", min: -3.04, max: 3.04, step: 0.01 },
+  { name: "joint_52", label: "joint_52", min: -3.04, max: 3.04, step: 0.01 },
 ]);
 
 // 当前各个关节的值，双向绑定到滑动条
