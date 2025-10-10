@@ -14,7 +14,7 @@
     </div>
 
     <!-- 夹爪控制 -->
-    <div class="slider-container">
+    <div v-if="joints.length > 6" class="slider-container">
       <label>夹爪开合</label>
       <input
         type="range"

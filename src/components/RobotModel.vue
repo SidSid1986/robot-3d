@@ -365,21 +365,30 @@ const recordTrackedMeshTrajectory = () => {
  */
 const loadRobotModel = () => {
   const loader = new URDFLoader();
-  loader.packages = { aubo_description: "/aubo_description" };
-  // loader.packages = { kr: "/kr" };
+  // loader.packages = { aubo_description: "/aubo_description" };
+  loader.packages = { kr1: "/kr1" };
+
+  // const INITIAL_POSITIONS = {
+  //   shoulder_joint: 0.0,
+  //   upperArm_joint: 0.0,
+  //   foreArm_joint: 1.57,
+  //   wrist1_joint: 0.0,
+  //   wrist2_joint: 1.57,
+  //   wrist3_joint: 0.0,
+  //   finger_joint: 0.0,
+  // };
 
   const INITIAL_POSITIONS = {
-    shoulder_joint: 0.0,
-    upperArm_joint: 0.0,
-    foreArm_joint: 1.57,
-    wrist1_joint: 0.0,
-    wrist2_joint: 1.57,
-    wrist3_joint: 0.0,
-    finger_joint: 0.0,
+    joint1: 0.0,
+    joint2: 0.0,
+    joint3: 1.57,
+    joint4: 0.0,
+    joint5: 1.57,
+    joint6: 0.0,
   };
 
-  loader.load("./aubo_description/urdf/aubo_i5.urdf", (result) => {
-    // loader.load("./kr/urdf/kr1.urdf", (result) => {
+  // loader.load("./aubo_description/urdf/aubo_i5.urdf", (result) => {
+  loader.load("./kr1/urdf/kr1.urdf", (result) => {
     robot = result;
     console.log(robot);
 
@@ -392,31 +401,8 @@ const loadRobotModel = () => {
     scene.add(robotGroup);
     robotGroup.add(robot);
 
-    //  遍历整个机器人模型，查找 name 为空（""）的 Mesh，即 默认选中的末端
-    let trackedMesh = null; // 这就是你要操作的末端 Mesh
+    let trackedMesh = robot.getObjectByName("Link6"); // 直接尝试获取Link6对象
 
-    robot.traverse((child) => {
-      // 打印子对象信息，用于调试（可选，正式环境可删）
-      // console.log(
-      //   "子对象名称：",
-      //   child.name,
-      //   "类型：",
-      //   child.type,
-      //   "父级名称：",
-      //   child.parent?.name
-      // );
-
-      // 找到第一个 name 为空的 Mesh，即你默认选中的那个（例如 robotiq_arg2f_base_link.stl）
-      if (
-        child instanceof THREE.Mesh &&
-        (!child.name || child.name.trim() === "")
-      ) {
-        trackedMesh = child;
-        console.log("✅ 已找到默认选中的末端 Mesh（name 为空）：", trackedMesh);
-      }
-    });
-
-    // 不再使用 getObjectByName("wrist3_link")，而是用上面找到的 trackedMesh
     if (trackedMesh) {
       // 挂载 TransformControls 到这个末端 Mesh
       transformControls.attach(trackedMesh);
@@ -621,13 +607,22 @@ const handleResize = () => {
 const handleJointChange = ({ jointValues }) => {
   if (!robot) return;
 
+  // const jointOrder = [
+  //   "shoulder_joint",
+  //   "upperArm_joint",
+  //   "foreArm_joint",
+  //   "wrist1_joint",
+  //   "wrist2_joint",
+  //   "wrist3_joint",
+  // ];
+
   const jointOrder = [
-    "shoulder_joint",
-    "upperArm_joint",
-    "foreArm_joint",
-    "wrist1_joint",
-    "wrist2_joint",
-    "wrist3_joint",
+    "joint1",
+    "joint2",
+    "joint3",
+    "joint4",
+    "joint5",
+    "joint6",
   ];
 
   jointValues.forEach((value, index) => {
@@ -720,13 +715,22 @@ const playRecord = () => {
     const jointValues = state.jointTrajectory[index];
 
     // 设置每个关节
+    // const jointOrder = [
+    //   "shoulder_joint",
+    //   "upperArm_joint",
+    //   "foreArm_joint",
+    //   "wrist1_joint",
+    //   "wrist2_joint",
+    //   "wrist3_joint",
+    // ];
+
     const jointOrder = [
-      "shoulder_joint",
-      "upperArm_joint",
-      "foreArm_joint",
-      "wrist1_joint",
-      "wrist2_joint",
-      "wrist3_joint",
+      "joint1",
+      "joint2",
+      "joint3",
+      "joint4",
+      "joint5",
+      "joint6",
     ];
 
     jointValues.forEach((value, i) => {
