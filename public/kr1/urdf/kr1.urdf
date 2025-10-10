@@ -23,7 +23,7 @@
     <visual>
       <origin
         xyz="0 0 0"
-        rpy="0 0 0" />
+        rpy="0 0 3.1416" />
       <geometry>
         <mesh
           filename="package://kr1/meshes/base_link.STL" />
@@ -44,6 +44,7 @@
       </geometry>
     </collision>
   </link>
+  
   <link
     name="Link1">
     <inertial>
@@ -89,7 +90,7 @@
     type="revolute">
     <origin
       xyz="0 0 0.2452"
-      rpy="0 0 0" />
+      rpy="0 0 3.1416" />
     <parent
       link="base_link" />
     <child

@@ -124,9 +124,9 @@ const jointValues = ref(
   [
     0.0, // shoulder_joint
     0.0, // upperArm_joint
-    1.57, // foreArm_joint
+    0.0, // foreArm_joint
     0.0, // wrist1_joint
-    1.57, // wrist2_joint
+    0.0, // wrist2_joint
     0.0, // wrist3_joint
   ].map(Number)
 );
@@ -148,9 +148,9 @@ const gripperValue = ref(Number(0.0));
 const INITIAL_POSITIONS = {
   jonit1: 0.0,
   jonit2: 0.0,
-  jonit3: 1.57,
+  jonit3: 0.0,
   jonit4: 0.0,
-  jonit5: 1.57,
+  jonit5: 0.0,
   jonit6: 0.0,
   jonit7: 0.0, // 夹爪关节
 };

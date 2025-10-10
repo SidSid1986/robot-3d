@@ -379,11 +379,11 @@ const loadRobotModel = () => {
   // };
 
   const INITIAL_POSITIONS = {
-    joint1: 0.0,
-    joint2: 0.0,
-    joint3: 1.57,
+    joint1: 0.0, // 底座关节给一个小角度
+    joint2: 0.0, // 上臂抬起
+    joint3: 0.0, // 前臂再抬起
     joint4: 0.0,
-    joint5: 1.57,
+    joint5: 0.0,
     joint6: 0.0,
   };
 
