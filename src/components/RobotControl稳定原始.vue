@@ -65,58 +65,31 @@ const lerpFactor = 0.03;
 let animationFrameId = null;
 
 // 定义所有可控制的关节信息
-// const joints = ref([
-//   {
-//     name: "shoulder_joint",
-//     label: "肩关节",
-//     min: -3.04,
-//     max: 3.04,
-//     step: 0.01,
-//   },
-//   {
-//     name: "upperArm_joint",
-//     label: "上臂关节",
-//     min: -3.04,
-//     max: 3.04,
-//     step: 0.01,
-//   },
-//   {
-//     name: "foreArm_joint",
-//     label: "前臂关节",
-//     min: -3.04,
-//     max: 3.04,
-//     step: 0.01,
-//   },
-//   { name: "wrist1_joint", label: "腕关节1", min: -3.04, max: 3.04, step: 0.01 },
-//   { name: "wrist2_joint", label: "腕关节2", min: -3.04, max: 3.04, step: 0.01 },
-//   { name: "wrist3_joint", label: "腕关节3", min: -3.04, max: 3.04, step: 0.01 },
-// ]);
-
 const joints = ref([
   {
-    name: "joint1",
-    label: "joint1",
+    name: "shoulder_joint",
+    label: "肩关节",
     min: -3.04,
     max: 3.04,
     step: 0.01,
   },
   {
-    name: "joint2",
-    label: "joint2",
+    name: "upperArm_joint",
+    label: "上臂关节",
     min: -3.04,
     max: 3.04,
     step: 0.01,
   },
   {
-    name: "joint3",
-    label: "joint3",
+    name: "foreArm_joint",
+    label: "前臂关节",
     min: -3.04,
     max: 3.04,
     step: 0.01,
   },
-  { name: "joint4", label: "joint4", min: -3.04, max: 3.04, step: 0.01 },
-  { name: "joint5", label: "joint5", min: -3.04, max: 3.04, step: 0.01 },
-  { name: "joint6", label: "joint6", min: -3.04, max: 3.04, step: 0.01 },
+  { name: "wrist1_joint", label: "腕关节1", min: -3.04, max: 3.04, step: 0.01 },
+  { name: "wrist2_joint", label: "腕关节2", min: -3.04, max: 3.04, step: 0.01 },
+  { name: "wrist3_joint", label: "腕关节3", min: -3.04, max: 3.04, step: 0.01 },
 ]);
 
 // 当前各个关节的值，双向绑定到滑动条
@@ -135,24 +108,14 @@ const jointValues = ref(
 const gripperValue = ref(Number(0.0));
 
 // 所有关节的初始位置定义，用于复位时传递给父组件
-// const INITIAL_POSITIONS = {
-//   shoulder_joint: 0.0,
-//   upperArm_joint: 0.0,
-//   foreArm_joint: 1.57,
-//   wrist1_joint: 0.0,
-//   wrist2_joint: 1.57,
-//   wrist3_joint: 0.0,
-//   finger_joint: 0.0, // 夹爪关节
-// };
-
 const INITIAL_POSITIONS = {
-  jonit1: 0.0,
-  jonit2: 0.0,
-  jonit3: 1.57,
-  jonit4: 0.0,
-  jonit5: 1.57,
-  jonit6: 0.0,
-  jonit7: 0.0, // 夹爪关节
+  shoulder_joint: 0.0,
+  upperArm_joint: 0.0,
+  foreArm_joint: 1.57,
+  wrist1_joint: 0.0,
+  wrist2_joint: 1.57,
+  wrist3_joint: 0.0,
+  finger_joint: 0.0, // 夹爪关节
 };
 
 // 每个子数组包含 6 个数字（单位：弧度），依次对应：

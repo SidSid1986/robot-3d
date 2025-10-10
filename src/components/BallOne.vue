@@ -243,6 +243,9 @@ const initThree = () => {
   // 添加带标签的坐标轴
   addAxesWithLabels();
 
+  // 新增：添加坐标轴刻度数字
+  addAxisTicks();
+
   // 1. 保留原主方向光（照亮模型正面）
   const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
   directionalLight.position.set(10, 20, 10); // 斜上方光源（原方向不变）
@@ -639,6 +642,80 @@ const clearRecord = () => {
     scene.remove(tempTrajectoryLine);
     tempTrajectoryLine = null;
   }
+};
+
+// 新增：生成并添加坐标轴刻度数字标签
+const addAxisTicks = () => {
+  const tickInterval = 1; // 刻度间隔，比如每 1 个单位
+  const tickRange = 5; // 刻度范围，比如 -5 ~ +5
+  const tickSize = 0.1; // 刻度数字偏移量，防止与轴线重叠（可调整）
+
+  const ticks = []; // 保存刻度对象，便于后续清除
+
+  const createTickLabel = (value, axis, posOffset) => {
+    // value: 刻度值，比如 1, 2, -1
+    // axis: 'x' | 'y' | 'z'，表示哪个轴
+    // posOffset: 该轴上的位置偏移，比如 x轴刻度就在 (value, 0, 0)
+
+    const div = document.createElement("div");
+    div.textContent = value.toString();
+    div.style.color = "#000";
+    div.style.fontFamily = "Arial, sans-serif";
+    div.style.fontSize = "12px";
+    div.style.fontWeight = "bold";
+    // div.style.background = "rgba(255, 255, 255, 0.8)";
+    div.style.padding = "2px 4px";
+    div.style.borderRadius = "2px";
+    div.style.userSelect = "none";
+
+    let position;
+    if (axis === "x") {
+      position = new THREE.Vector3(value, 0, 0); // X轴刻度位置
+    } else if (axis === "y") {
+      position = new THREE.Vector3(0, 0, -value); // Y轴 → Three.js Z轴负方向（前）
+    } else if (axis === "z") {
+      position = new THREE.Vector3(0, value, 0); // Z轴 → Three.js Y轴正方向（上）
+    }
+
+    // 转换为目标坐标系中的刻度位置
+    // 注意：目前您的坐标系已经通过 targetToThree 映射，但刻度是我们手动放置的，
+    // 所以这里的 position 是  直接对应 Three.js 坐标系下的轴位置**
+    // 如果 刻度也基于目标坐标系逻辑（比如 X右、Y前、Z上），需使用 targetToThree
+
+    //  假设刻度直接展示在 Three.js 的 X(右)、Z(前)、Y(上) 轴上
+    // 所以直接用上述 position
+
+    const label = new CSS2DObject(div);
+    label.position.copy(position);
+    // 可选：稍微偏移一点，避免和轴线重叠
+    if (axis === "x") label.position.y += tickSize;
+    if (axis === "y") label.position.x += tickSize;
+    if (axis === "z") label.position.x += tickSize;
+
+    scene.add(label);
+    ticks.push(label);
+  };
+
+  // 生成 X 轴刻度（沿 X 方向，Y=0,Z=0，刻度数字在 X 正负方向）
+  for (let i = -tickRange; i <= tickRange; i++) {
+    if (i === 0) continue; // 0 已经有坐标轴标签了，可以跳过或保留
+    createTickLabel(i, "x", new THREE.Vector3(i, 0, 0));
+  }
+
+  // 生成 Y 轴刻度 → 对应 Three.js 中的 Z 轴（前），所以刻度位置是 (0, 0, -i)
+  for (let i = -tickRange; i <= tickRange; i++) {
+    if (i === 0) continue;
+    createTickLabel(i, "y", new THREE.Vector3(0, 0, -i));
+  }
+
+  // 生成 Z 轴刻度 → 对应 Three.js 中的 Y 轴（上），所以刻度位置是 (0, i, 0)
+  for (let i = -tickRange; i <= tickRange; i++) {
+    if (i === 0) continue;
+    createTickLabel(i, "z", new THREE.Vector3(0, i, 0));
+  }
+
+  // 可选：将 ticks 数组保存到 state 中，便于后续清除
+  state.axisTicks = ticks; // 在 state 中保存，用于 clear 时移除
 };
 
 // 生命周期
