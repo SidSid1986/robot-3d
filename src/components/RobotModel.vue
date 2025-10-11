@@ -291,6 +291,7 @@ const addAxesWithLabels = () => {
  * 初始化变换控制器
  */
 const initTransformControls = () => {
+  console.log("initTransformControls");
   transformControls = new TransformControls(camera, renderer.domElement);
   transformControls.mode = "translate";
   scene.add(transformControls);
@@ -419,13 +420,13 @@ const loadRobotModel = () => {
     if (trackedMesh) {
       // 挂载 TransformControls 到这个末端 Mesh
       transformControls.attach(trackedMesh);
-      // 直接把 trackedMesh 赋值给 endEffector，后续统一用 endEffector 操作
+
       endEffector = trackedMesh;
       // 获取该 Mesh 的世界坐标，用于显示末端位置
       const worldPos = new THREE.Vector3();
       trackedMesh.getWorldPosition(worldPos);
 
-      const targetPos = threeToTarget(worldPos); // 假设你有这个坐标转换函数
+      const targetPos = threeToTarget(worldPos); // 坐标转换
       state.endX = targetPos.x;
       state.endY = targetPos.y;
       state.endZ = targetPos.z;
@@ -442,7 +443,7 @@ const loadRobotModel = () => {
       // 可选：将这个 Mesh 也存为全局，用于后续轨迹记录等
       trackedMeshForTrajectory.value = trackedMesh;
     } else {
-      console.warn("⚠️ 未找到 name 为空的末端 Mesh，请检查模型加载结构！");
+      console.warn("未找到 name 为空的末端 Mesh，请检查模型加载结构！");
     }
 
     // 初始化关节位置（这部分逻辑不变）
@@ -484,7 +485,7 @@ const setupMouseClick = () => {
       const mesh = intersect.object;
 
       if (mesh instanceof THREE.Mesh) {
-        console.log("🔍 被点击的 Mesh:", {
+        console.log("  被点击的 Mesh:", {
           name: mesh.name,
           parent: mesh.parent ? mesh.parent.name : "无父级",
           object3d: mesh,
@@ -638,7 +639,7 @@ const handleJointChange = ({ jointValues }) => {
   //   "joint6",
   // ];
 
-   const jointOrder = [
+  const jointOrder = [
     "joint_1",
     "joint_2",
     "joint_3",
@@ -746,13 +747,22 @@ const playRecord = () => {
     //   "wrist3_joint",
     // ];
 
+    // const jointOrder = [
+    //   "joint1",
+    //   "joint2",
+    //   "joint3",
+    //   "joint4",
+    //   "joint5",
+    //   "joint6",
+    // ];
+
     const jointOrder = [
-      "joint1",
-      "joint2",
-      "joint3",
-      "joint4",
-      "joint5",
-      "joint6",
+      "joint_1",
+      "joint_2",
+      "joint_3",
+      "joint_4",
+      "joint_51",
+      "joint_52",
     ];
 
     jointValues.forEach((value, i) => {
