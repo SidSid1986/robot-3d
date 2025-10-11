@@ -14,17 +14,19 @@
     </div>
 
     <!-- 夹爪控制 -->
-    <div v-if="joints.length > 6" class="slider-container">
-      <label>夹爪开合</label>
-      <input
-        type="range"
-        v-model.number="gripperValue"
-        min="0"
-        max="1"
-        step="0.01"
-        @input="updateGripper(gripperValue)"
-      />
-      <span>{{ Number(gripperValue).toFixed(2) }}</span>
+    <div class="slider-container">
+      <div v-if="joints.length > 6">
+        <label>夹爪开合</label>
+        <input
+          type="range"
+          v-model.number="gripperValue"
+          min="0"
+          max="1"
+          step="0.01"
+          @input="updateGripper(gripperValue)"
+        />
+        <span>{{ Number(gripperValue).toFixed(2) }}</span>
+      </div>
 
       <div class="button-area">
         <hr />
@@ -173,13 +175,13 @@ const gripperValue = ref(Number(0.0));
 // };
 
 const INITIAL_POSITIONS = {
-  jonit1: 0.0,
-  jonit2: 0.0,
-  jonit3: 0.0,
-  jonit4: 0.0,
-  jonit5: 0.0,
-  jonit6: 0.0,
-  jonit7: 0.0, // 夹爪关节
+  joint1: 0.0,
+  joint2: 0.0,
+  joint3: 0.0,
+  joint4: 0.0,
+  joint5: 0.0,
+  joint6: 0.0,
+  joint7: 0.0, // 夹爪关节
 };
 
 // 每个子数组包含 6 个数字（单位：弧度），依次对应：
@@ -197,9 +199,9 @@ const robotReset = () => {
   jointValues.value = [
     0.0, // shoulder_joint
     0.0, // upperArm_joint
-    1.57, // foreArm_joint
+    0.0, // foreArm_joint
     0.0, // wrist1_joint
-    1.57, // wrist2_joint
+    0.0, // wrist2_joint
     0.0, // wrist3_joint
   ];
 
