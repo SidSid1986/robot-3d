@@ -89,6 +89,8 @@ let robotGroup = null;
 
 const trackedMeshForTrajectory = ref(null);
 
+let virtualJointGroup = null; // 初始为 null
+
 // 当前选中的 Mesh 信息，用于在页面显示
 const selectedMeshInfo = reactive({
   id: null,
@@ -151,6 +153,140 @@ const targetToThree = (targetX, targetY, targetZ) => {
     targetZ, // Z轴: 目标Z(上) → Three.js Y(上)
     -targetY // Y轴: 目标Y(前) → Three.js Z(向内，取负)
   );
+};
+
+/**
+ * 更新虚拟骨骼（关节球体和连接线条）
+ */
+const upBones = () => {
+  if (!robot) {
+    console.warn("⚠️ upBones: robot 还未加载，无法更新虚拟骨骼！");
+    return;
+  }
+
+  // ======================
+  // 第一步：如果虚拟骨骼组还没创建，则创建一次（只执行一次！）
+  // ======================
+  if (!virtualJointGroup) {
+    console.log("🔧 创建虚拟骨骼组（只执行一次）");
+
+    virtualJointGroup = new THREE.Group();
+    scene.add(virtualJointGroup);
+
+    // 定义关节名称（对应 URDF 中的 joint1 ~ joint6，通常也对应 Link1 ~ Link6）
+    const jointNames = ["Link1", "Link2", "Link3", "Link4", "Link5", "Link6"];
+
+    // 保存每个关节对应的 Mesh，以及生成的球体和线条，方便后续更新
+    virtualJointGroup.jointMeshes = []; // 存储球体
+    virtualJointGroup.boneLines = [];  // 存储线条
+
+    // 遍历每个关节，创建球体，暂不连线（下一轮再连）
+    jointNames.forEach((linkName, index) => {
+      const linkMesh = robot.getObjectByName(linkName);
+
+      if (!linkMesh) {
+        console.warn(`未找到 Link（关节对应的 Mesh）: ${linkName}，请检查模型结构！`);
+        return;
+      }
+
+      robot.updateMatrixWorld();
+      linkMesh.updateMatrixWorld();
+
+      const worldPos = new THREE.Vector3();
+      linkMesh.getWorldPosition(worldPos);
+
+      // 创建球体（关节）
+      const sphereGeometry = new THREE.SphereGeometry(0.05, 12, 12);
+      const sphereMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff88 }); // 绿色
+      const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+
+      sphere.position.copy(worldPos);
+      virtualJointGroup.add(sphere);
+
+      // 保存球体引用，后续用于更新位置
+      virtualJointGroup.jointMeshes[index] = sphere;
+
+      console.log(`✅ 虚拟骨骼关节（对应 ${linkName}）已创建，位置:`, worldPos);
+    });
+
+    // ======================
+    // 第二步：连接相邻关节（创建线条，骨骼）
+    // ======================
+    for (let i = 0; i < jointNames.length - 1; i++) {
+      const startMesh = virtualJointGroup.jointMeshes[i];
+      const endMesh = virtualJointGroup.jointMeshes[i + 1];
+
+      if (!startMesh || !endMesh) {
+        console.warn(`关节 ${i} 或 ${i + 1} 的球体未创建成功，无法连线`);
+        continue;
+      }
+
+      const start = startMesh.position.clone();
+      const end = endMesh.position.clone();
+
+      const geometry = new THREE.BufferGeometry().setFromPoints([start, end]);
+      const material = new THREE.LineBasicMaterial({ color: 0xff0000 }); // 红色连线
+      const line = new THREE.Line(geometry, material);
+
+      virtualJointGroup.add(line);
+
+      // 保存线条引用，后续也可更新（如果需要动态更新位置）
+      virtualJointGroup.boneLines[i] = line;
+    }
+
+    console.log("✅ 虚拟骨骼（关节 + 骨骼连线）初始化完成！");
+  } else {
+    // ======================
+    // 第三步：如果虚拟骨骼组已经存在，则只更新球体位置（以及可选的线条）
+    // ======================
+
+    const jointNames = ["Link1", "Link2", "Link3", "Link4", "Link5", "Link6"];
+
+    // 更新球体位置
+    jointNames.forEach((linkName, index) => {
+      const linkMesh = robot.getObjectByName(linkName);
+
+      if (!linkMesh) {
+        console.warn(`未找到 Link（关节对应的 Mesh）: ${linkName}`);
+        return;
+      }
+
+      robot.updateMatrixWorld();
+      linkMesh.updateMatrixWorld();
+
+      const worldPos = new THREE.Vector3();
+      linkMesh.getWorldPosition(worldPos);
+
+      // 更新对应索引的球体位置
+      const sphere = virtualJointGroup.jointMeshes[index];
+      if (sphere) {
+        sphere.position.copy(worldPos);
+      }
+    });
+
+    // 更新线条位置
+    for (let i = 0; i < jointNames.length - 1; i++) {
+      const startMesh = virtualJointGroup.jointMeshes[i];
+      const endMesh = virtualJointGroup.jointMeshes[i + 1];
+
+      if (!startMesh || !endMesh) {
+        console.warn(`关节 ${i} 或 ${i + 1} 的球体未找到，无法更新线条`);
+        continue;
+      }
+
+      const start = startMesh.position.clone();
+      const end = endMesh.position.clone();
+
+      const line = virtualJointGroup.boneLines[i];
+      if (line) {
+        // 更新线条的几何体，连接最新的球体位置
+        line.geometry.dispose(); // 清理旧的几何体
+        line.geometry = new THREE.BufferGeometry().setFromPoints([start, end]);
+      } else {
+        console.warn(`线条 ${i} 未找到，无法更新`);
+      }
+    }
+  }
 };
 
 const threeToTarget = (threeVec3) => {
@@ -275,7 +411,7 @@ const initScene = () => {
   initTransformControls();
 
   // 启动渲染循环
-  animate();
+  // animate();
 };
 
 /**
@@ -453,6 +589,8 @@ const loadRobotModel = () => {
         state.endZ.toFixed(2)
       );
 
+      upBones();
+
       // 可选：将这个 Mesh 也存为全局，用于后续轨迹记录等
       trackedMeshForTrajectory.value = trackedMesh;
     } else {
@@ -474,6 +612,9 @@ const loadRobotModel = () => {
     camera.position.set(center.x + 2, center.y + 2, center.z + 7);
     camera.lookAt(center);
     controls.update();
+
+    //animate
+    animate()
   });
 };
 
@@ -610,6 +751,7 @@ const updateTempTrajectoryLine = () => {
  */
 const animate = () => {
   requestAnimationFrame(animate);
+  upBones()
   controls.update();
   renderer.render(scene, camera);
   labelRenderer.render(scene, camera);
@@ -825,7 +967,7 @@ onMounted(() => {
   initScene();
 
   setupMouseClick();
-  animate();
+  // animate();
   window.addEventListener("resize", handleResize);
 });
 

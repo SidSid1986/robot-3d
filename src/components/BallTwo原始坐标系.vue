@@ -15,11 +15,12 @@
 <script setup>
 import { ref, onMounted, onUnmounted, watch } from "vue";
 import * as THREE from "three";
-import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
+import { TransformControls } from "three/examples/jsm/controls/TransformControls";
 import {
   CSS2DRenderer,
   CSS2DObject,
-} from "three/addons/renderers/CSS2DRenderer.js";
+} from "three/examples/jsm/renderers/CSS2DRenderer";
 
 // 接收外部轨迹数据
 const props = defineProps({

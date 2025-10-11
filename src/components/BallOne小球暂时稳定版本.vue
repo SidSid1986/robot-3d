@@ -40,13 +40,13 @@
 <script setup>
 import { ref, onMounted, onUnmounted, reactive, computed } from "vue";
 import * as THREE from "three";
-import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { TransformControls } from "three/addons/controls/TransformControls.js";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
+import { TransformControls } from "three/examples/jsm/controls/TransformControls";
 import {
   CSS2DRenderer,
   CSS2DObject,
-} from "three/addons/renderers/CSS2DRenderer.js";
-import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+} from "three/examples/jsm/renderers/CSS2DRenderer";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader";
 
 // 定义事件，实时传递轨迹数据
 const emits = defineEmits(["getTrajectory"]);
