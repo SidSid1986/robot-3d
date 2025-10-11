@@ -160,6 +160,48 @@ const threeToTarget = (threeVec3) => {
     z: threeVec3.y,
   };
 };
+/**
+ * 初始化变换控制器
+ */
+const initTransformControls = () => {
+  console.log("initTransformControls");
+  transformControls = new TransformControls(camera, renderer.domElement);
+  transformControls.mode = "translate";
+
+  //  获取控制器的辅助对象并添加到场景（控制器视觉依赖此对象）
+  const transformHelper = transformControls.getHelper();
+  if (transformHelper) scene.add(transformHelper);
+
+  // 拖拽事件
+  transformControls.addEventListener("change", () => {
+    if (endEffector) {
+      const targetPos = threeToTarget(endEffector.position);
+      state.endX = targetPos.x;
+      state.endY = targetPos.y;
+      state.endZ = targetPos.z;
+
+      // 记录轨迹
+      if (state.isRecording) {
+        const currentPoint = { ...targetPos };
+        const isSameAsLast =
+          state.lastRecordedPoint &&
+          Math.abs(currentPoint.x - state.lastRecordedPoint.x) < 0.01 &&
+          Math.abs(currentPoint.y - state.lastRecordedPoint.y) < 0.01 &&
+          Math.abs(currentPoint.z - state.lastRecordedPoint.z) < 0.01;
+
+        if (!isSameAsLast) {
+          state.tempTrajectory.push(currentPoint);
+          state.lastRecordedPoint = currentPoint;
+          updateTempTrajectoryLine();
+        }
+      }
+    }
+  });
+
+  // 拖拽开始/结束
+  transformControls.addEventListener("start", () => (controls.enabled = false));
+  transformControls.addEventListener("end", () => (controls.enabled = true));
+};
 
 /**
  * 初始化3D场景
@@ -226,11 +268,14 @@ const initScene = () => {
   controls.enableDamping = true;
   controls.dampingFactor = 0.05;
 
+  // 加载机器人模型
+  loadRobotModel();
+
   // 变换控制器（用于拖拽末端执行器）
   initTransformControls();
 
-  // 加载机器人模型
-  loadRobotModel();
+  // 启动渲染循环
+  animate();
 };
 
 /**
@@ -285,46 +330,6 @@ const addAxesWithLabels = () => {
   createAxisLabel("X", "#ff0000", { x: axisLength + 0.3, y: 0, z: 0 });
   createAxisLabel("Y", "#00ff00", { x: 0, y: axisLength + 0.3, z: 0 });
   createAxisLabel("Z", "#0000ff", { x: 0, y: 0, z: axisLength + 0.3 });
-};
-
-/**
- * 初始化变换控制器
- */
-const initTransformControls = () => {
-  console.log("initTransformControls");
-  transformControls = new TransformControls(camera, renderer.domElement);
-  transformControls.mode = "translate";
-  scene.add(transformControls);
-
-  // 拖拽事件
-  transformControls.addEventListener("change", () => {
-    if (endEffector) {
-      const targetPos = threeToTarget(endEffector.position);
-      state.endX = targetPos.x;
-      state.endY = targetPos.y;
-      state.endZ = targetPos.z;
-
-      // 记录轨迹
-      if (state.isRecording) {
-        const currentPoint = { ...targetPos };
-        const isSameAsLast =
-          state.lastRecordedPoint &&
-          Math.abs(currentPoint.x - state.lastRecordedPoint.x) < 0.01 &&
-          Math.abs(currentPoint.y - state.lastRecordedPoint.y) < 0.01 &&
-          Math.abs(currentPoint.z - state.lastRecordedPoint.z) < 0.01;
-
-        if (!isSameAsLast) {
-          state.tempTrajectory.push(currentPoint);
-          state.lastRecordedPoint = currentPoint;
-          updateTempTrajectoryLine();
-        }
-      }
-    }
-  });
-
-  // 拖拽开始/结束
-  transformControls.addEventListener("start", () => (controls.enabled = false));
-  transformControls.addEventListener("end", () => (controls.enabled = true));
 };
 
 //  新增：记录关键 Mesh（trackedMesh）的轨迹点
@@ -413,13 +418,20 @@ const loadRobotModel = () => {
     scene.add(robotGroup);
     robotGroup.add(robot);
 
+    console.log("robot:", robot);
+    console.log("robotGroup:", robotGroup);
+
+    //将模型绑定到变换控制器（
+    // transformControls.attach(robot);
+    transformControls.attach(robotGroup);
+
     // let trackedMesh = robot.getObjectByName("Link6"); // 直接尝试获取Link6对象 kr1
     let trackedMesh = robot.getObjectByName("link_52"); // 直接尝试获取Link6对象 .
     console.log(trackedMesh);
 
     if (trackedMesh) {
       // 挂载 TransformControls 到这个末端 Mesh
-      transformControls.attach(trackedMesh);
+      // transformControls.attach(trackedMesh);
 
       endEffector = trackedMesh;
       // 获取该 Mesh 的世界坐标，用于显示末端位置
@@ -600,6 +612,7 @@ const animate = () => {
   controls.update();
   renderer.render(scene, camera);
   labelRenderer.render(scene, camera);
+  // transformControls.update();
 };
 
 /**
